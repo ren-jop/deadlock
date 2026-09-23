@@ -2,8 +2,8 @@
 
 **Deadlock** is a native macOS sleep-enforcement and distraction-blocking utility by Ren Jopson.
 
-**Author:** [Ren Jopson](https://rin677.github.io/ren-jopson/)  
-**Website:** https://rin677.github.io/deadlock/  
+**Author:** [Ren Jopson](https://ren-jop.github.io/ren-jopson/)  
+**Website:** https://ren-jop.github.io/deadlock/  
 **Latest source snapshot:** v1.2.0
 
 > Deadlock is intentionally high-friction software. Review the source and installation scripts before installing.
