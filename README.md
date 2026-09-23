@@ -4,7 +4,7 @@
 
 **Author:** [Ren Jopson](https://ren-jop.github.io/)  
 **Website:** https://ren-jop.github.io/deadlock/  
-**Latest source snapshot:** v1.2.0
+**Current documented build:** v1.2.2
 
 > Deadlock is intentionally high-friction software. Review the source and installation scripts before installing.
 
