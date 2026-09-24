@@ -34,6 +34,9 @@ perf() {
 }
 
 web() {
+  echo "== daemon web status =="
+  "$APP/Contents/MacOS/deadlock" --ipc web-status 2>&1 || true
+  echo
   echo "== deadlock managed hosts =="
   awk '/# BEGIN DEADLOCK/{show=1} show{print} /# END DEADLOCK/{show=0}' /etc/hosts || true
   echo
