@@ -1,0 +1,47 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          cat source/deadlock-v1.2.2.zip.b64.part-* > "$WORK/deadlock.zip.b64"
+          /usr/bin/base64 -D < "$WORK/deadlock.zip.b64" > "$WORK/deadlock.zip"
+          /usr/bin/unzip -tq "$WORK/deadlock.zip"
+          /usr/bin/ditto -x -k "$WORK/deadlock.zip" "$WORK"
+          for patch_file in source/patches/*.patch; do
+            /usr/bin/patch --batch --forward -p1 -d "$WORK/deadlock" < "$patch_file"
+          done
+          echo "DEADLOCK_SOURCE=$WORK/deadlock" >> "$GITHUB_ENV"
+
+      - name: Validate scripts
+        shell: bash
+        run: |
+          bash -n install.sh
+          bash -n maintenance-unlock.sh
+          bash -n deadlockctl
+          bash -n "$DEADLOCK_SOURCE/build.sh"
+          bash -n "$DEADLOCK_SOURCE/install.sh"
+          bash -n "$DEADLOCK_SOURCE/deadlockctl"
+          bash -n "$DEADLOCK_SOURCE/maintenance-unlock.sh"
+
+      - name: Build
+        shell: bash
+        run: |
+          cd "$DEADLOCK_SOURCE"
+          swift build -c release
