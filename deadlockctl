@@ -41,12 +41,15 @@ web() {
   awk '/# BEGIN DEADLOCK/{show=1} show{print} /# END DEADLOCK/{show=0}' /etc/hosts || true
   echo
   echo "== resolver spot checks =="
-  for host in instagram.com tiktok.com reddit.com x.com; do
+  for host in instagram.com tiktok.com reddit.com x.com youtube.com; do
     printf '%-22s ' "$host"
     dscacheutil -q host -a name "$host" 2>/dev/null | awk '/ip_address:/{printf "%s ", $2} END{print ""}'
   done
   echo
-  echo "If a domain is configured as blocked but still resolves publicly, flush caches with:"
+  echo "YouTube resolving publicly is expected: Deadlock blocks it at the browser/app layer"
+  echo "so IINA and other non-browser clients can keep normal DNS access."
+  echo
+  echo "For other configured domains that unexpectedly resolve publicly, flush caches with:"
   echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
 }
 
