@@ -18,23 +18,13 @@ bash ./install.sh
 
 The installer validates the vendored source snapshot, applies the reviewed patch set under `source/patches/`, builds locally, then installs the app, daemon and watchdog. This is the same source path validated by GitHub Actions on macOS ARM64.
 
-## Development maintenance session
-
-To temporarily bypass Deadlock's own settings-edit locks while debugging:
-
-```bash
-bash ./maintenance-unlock.sh
-```
-
-The bypass is memory-only. Restarting `bedtimelockd` or rebooting restores the saved settings restrictions.
-
 ## Website blocking diagnostics
 
 ```bash
 bash ./deadlockctl web
 ```
 
-v1.2.4 adds corrected IPv6 sink entries, mobile hostname variants, immediate rescanning when a block starts, and a browser-scoped Accessibility fallback for already-open browser sessions.
+v1.2.4 makes the configured distraction list continuous when the weekly schedule is off. Enabling the weekly schedule limits blocking to those windows; manual and Focus-triggered blocks still apply. It also includes corrected IPv6 sink entries, mobile hostname variants, immediate rescanning, and a browser-scoped Accessibility fallback for already-open sessions.
 
 ## Update
 
