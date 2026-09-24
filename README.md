@@ -2,13 +2,13 @@
 
 Native macOS sleep-enforcement and distraction-control software.
 
-Deadlock separates its menu-bar UI from a privileged, event-driven daemon so configured sleep windows and blocking policy do not depend on the GUI remaining open.
+Deadlock separates its menu-bar UI from a privileged, event-driven daemon so sleep windows and blocking policy do not depend on the GUI staying open.
 
-> **Preview software.** Deadlock installs privileged launchd services and is intentionally high-friction. Review the source and uninstall behaviour before installing.
+> **v1.2.3 preview.** Deadlock installs privileged `launchd` services and is intentionally high-friction. Review the source patch set and uninstall behaviour before installing.
 
 ## Install
 
-Requirements: **Apple Silicon Mac**, macOS 14+, and Apple's Command Line Tools.
+Requirements: **Apple Silicon**, macOS 14+, and Apple's Command Line Tools.
 
 ```bash
 git clone https://github.com/ren-jop/deadlock.git
@@ -16,15 +16,38 @@ cd deadlock
 ./install.sh
 ```
 
-The installer validates the bundled v1.2.2 source snapshot, builds a release with Swift Package Manager, installs the app and privileged daemon, and starts the launchd services. It asks for `sudo` only when system-level components are installed.
+That is the complete install path. The bootstrapper validates the bundled source, applies the readable v1.2.3 patch set, builds with Swift Package Manager, and installs the menu app, root daemon and watchdog. It requests `sudo` only for system-level installation.
 
-To remove Deadlock:
+To uninstall:
 
 ```bash
 ./uninstall.sh
 ```
 
-Deadlock's daemon intentionally enforces the project's uninstall-delay policy; the root wrapper uses the same verified source snapshot as installation.
+## Development maintenance session
+
+While debugging, bypass Deadlock's own settings-edit locks without deleting the saved policy:
+
+```bash
+./maintenance-unlock.sh
+```
+
+The bypass exists **only in the running daemon's memory**. Restarting `bedtimelockd` or rebooting restores the normal Settings Guard, weekday edit restrictions, active-window restrictions and delayed-loosening behaviour.
+
+## Website blocking
+
+v1.2.3 strengthens distraction blocking in two layers:
+
+1. managed `/etc/hosts` entries cover the base, `www`, `m` and `mobile` host variants on IPv4 and IPv6;
+2. a browser-scoped Accessibility fallback rescans when protection starts, catching an already-open tab or connection that survives a DNS change.
+
+Run:
+
+```bash
+./deadlockctl web
+```
+
+to inspect Deadlock's hosts sections and resolver results. If the Accessibility fallback is needed, macOS must grant Accessibility access to the installed Deadlock component.
 
 ## Architecture
 
@@ -35,37 +58,34 @@ menu-bar app
 root daemon ── schedule / policy engine
      │
      ├─ sleep enforcement
-     ├─ distraction blocking
-     └─ web protection
+     ├─ distraction policy ──► /etc/hosts
+     │                         + browser fallback
+     └─ adult-content / SafeSearch policy
 
-Focus ───────────────► daemon IPC
+Focus ───────────────────────► daemon IPC
 ```
 
 ## Engineering notes
 
 - Swift + Swift Package Manager; no Xcode project or third-party dependencies
 - privileged root daemon plus independent watchdog
-- IOKit wake handling and `pmset sleepnow` for sleep enforcement
+- IOKit wake handling and `pmset sleepnow`
 - local Unix-socket IPC between UI, Focus and daemon
-- launchd-managed menu app, daemon and watchdog
-- ad-hoc signing for local preview builds
+- `launchd`-managed menu app, daemon and watchdog
 - event-driven design intended to keep idle overhead low
+- ad-hoc signing for local preview builds
 
-## Reproducible source snapshot
+## Reproducible preview source
 
-The currently validated **v1.2.2** snapshot is vendored under `source/` as ordered base64 chunks. `install.sh` concatenates them, decodes the ZIP, runs an integrity check, and only then builds it in a temporary directory.
+The validated v1.2.2 source snapshot is vendored under `source/` as ordered base64 chunks. The v1.2.3 changes are readable under `source/patches/`; `install.sh` reconstructs the snapshot and applies the patch set before compiling.
 
-This avoids depending on an external download while the project is still in preview. A notarized binary distribution is not provided yet.
+This avoids an external download dependency while the project is still a local preview. A notarized binary distribution is not provided yet.
 
-## Related projects
+## Related
 
-- [Focus](https://github.com/ren-jop/focus) — focus timer and session history
-- [Planner](https://github.com/ren-jop/planner) — Apple Calendar planning layer
 - [Project page](https://ren-jop.github.io/deadlock/)
-
-## Status
-
-Current documented build: **v1.2.2 preview**.
+- [Focus](https://github.com/ren-jop/focus)
+- [Planner](https://github.com/ren-jop/planner)
 
 ## License
 
