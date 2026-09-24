@@ -1,0 +1,127 @@
+--- a/Sources/bedtimelockd/WebProtection.swift
++++ b/Sources/bedtimelockd/WebProtection.swift
+@@ -178,14 +178,9 @@
+             aliases: ["ecosia.org", "www.ecosia.org"],
+             lines: &lines
+         )
++        // YouTube is intentionally not DNS-remapped here. When the user blocks
++        // YouTube as a distraction, Deadlock enforces it at the app/browser layer
++        // so API/video clients such as IINA can keep normal DNS resolution.
+-        addSafeMapping(
+-            target: "restrictmoderate.youtube.com",
+-            aliases: [
+-                "youtube.com", "www.youtube.com", "m.youtube.com",
+-                "youtube-nocookie.com", "www.youtube-nocookie.com"
+-            ],
+-            lines: &lines
+-        )
+ 
+         lines.append(adultEnd)
+         return lines.joined(separator: "\n")
+@@ -194,12 +189,19 @@
+     private func buildDistractionBlock(_ domains: [String]) -> String {
+         var lines = [distractionBegin]
+         for domain in domains {
++            if shouldBypassDNSBlock(domain) { continue }
+             appendBlockedHost(domain, lines: &lines)
+         }
+         lines.append(distractionEnd)
+         return lines.joined(separator: "\n")
+     }
+ 
++    private func shouldBypassDNSBlock(_ domain: String) -> Bool {
++        let host = domain.lowercased()
++        let passthrough = ["youtube.com", "youtu.be", "youtube-nocookie.com"]
++        return passthrough.contains { host == $0 || host.hasSuffix("." + $0) }
++    }
++
+     private func appendBlockedHost(_ domain: String, lines: inout [String]) {
+         let normalized = domain.lowercased()
+         var hosts = [normalized]
+--- a/Sources/bedtimelockd/ContentMonitor.swift
++++ b/Sources/bedtimelockd/ContentMonitor.swift
+@@ -74,6 +74,11 @@
+                 .filter { !$0.isEmpty }
+             guard !words.isEmpty else { return }
+ 
++            if self.isBlockedYouTubeApp(pid: pid, words: words) {
++                self.onMatch(pid, "youtube.com")
++                return
++            }
++
+             let app = AXUIElementCreateApplication(pid)
+             let text = self.collectText(app, depth: 0, budget: 250).lowercased()
+             guard !text.isEmpty else { return }
+@@ -83,6 +88,23 @@
+         }
+     }
+ 
++    private func isBlockedYouTubeApp(pid: pid_t, words: [String]) -> Bool {
++        let youtubeConfigured = words.contains {
++            $0 == "youtube.com" || $0.hasSuffix(".youtube.com")
++        }
++        guard youtubeConfigured,
++              let app = NSRunningApplication(processIdentifier: pid)
++        else { return false }
++
++        let bundle = (app.bundleIdentifier ?? "").lowercased()
++        if bundle.contains("iina") { return false }
++        if bundle == "com.google.ios.youtube" || bundle == "com.google.youtube" {
++            return true
++        }
++        return app.localizedName?.lowercased() == "youtube"
++            && (bundle.contains("safari") || bundle.contains("chrome") || bundle.contains("google"))
++    }
++
+     private func collectText(_ element: AXUIElement, depth: Int, budget: Int) -> String {
+         guard depth <= 7, budget > 0 else { return "" }
+         var pieces: [String] = []
+--- a/Sources/bedtimelockd/Daemon.swift
++++ b/Sources/bedtimelockd/Daemon.swift
+@@ -711,10 +711,12 @@
+             let isDistractionMatch = distractionActive && distractionDomains.contains(normalizedWord)
+ 
+             if isDistractionMatch {
++                // Ordinary distraction matches stay browser-scoped. YouTube is the one
++                // exception: its DNS stays untouched so IINA can use it, while browsers
++                // and the official YouTube app remain blocked.
++                let allowedTarget = self.isSupportedBrowser(app?.bundleIdentifier)
++                    || (self.isYouTubeDomain(normalizedWord) && self.isOfficialYouTubeApp(app))
++                guard allowedTarget else { return }
+-                // The Accessibility fallback is intentionally browser-scoped for ordinary
+-                // distraction domains, avoiding false positives in editors or chat apps that
+-                // merely display a blocked URL as text.
+-                guard self.isSupportedBrowser(app?.bundleIdentifier) else { return }
+                 _ = Darwin.kill(pid, SIGTERM)
+                 self.queue.asyncAfter(deadline: .now() + 1) {
+                     if Darwin.kill(pid, 0) == 0 { _ = Darwin.kill(pid, SIGKILL) }
+@@ -751,6 +753,29 @@
+         }
+     }
+ 
++    private func isYouTubeDomain(_ value: String) -> Bool {
++        let host = value.lowercased()
++        return host == "youtube.com"
++            || host.hasSuffix(".youtube.com")
++            || host == "youtu.be"
++            || host.hasSuffix(".youtu.be")
++            || host == "youtube-nocookie.com"
++            || host.hasSuffix(".youtube-nocookie.com")
++    }
++
++    private func isOfficialYouTubeApp(_ app: NSRunningApplication?) -> Bool {
++        guard let app else { return false }
++        let bundle = (app.bundleIdentifier ?? "").lowercased()
++        if bundle.contains("iina") { return false }
++        if bundle == "com.google.ios.youtube" || bundle == "com.google.youtube" {
++            return true
++        }
++        // Covers Safari/Chrome-installed YouTube web apps without treating IINA
++        // or an arbitrary app that merely mentions YouTube as the official client.
++        return app.localizedName?.lowercased() == "youtube"
++            && (bundle.contains("safari") || bundle.contains("chrome") || bundle.contains("google"))
++    }
++
+     private func isSupportedBrowser(_ bundleIdentifier: String?) -> Bool {
+         guard let bundleIdentifier else { return false }
+         let exact: Set<String> = [
