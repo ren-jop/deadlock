@@ -1,0 +1,34 @@
+--- a/Sources/DeadlockShared/Models.swift
++++ b/Sources/DeadlockShared/Models.swift
+@@ -271,6 +271,7 @@
+     public var pornScheduleNextStart: Date?
+     public var pornSettingsEditableToday: Bool
+     public var settingsLockedUntil: Date?
++    public var maintenanceSettingsUnlocked: Bool
+ 
+     public var accountabilityEnabled: Bool
+     public var accountabilityTriggeredAt: Date?
+@@ -303,6 +304,7 @@
+         pornScheduleNextStart: Date? = nil,
+         pornSettingsEditableToday: Bool = false,
+         settingsLockedUntil: Date? = nil,
++        maintenanceSettingsUnlocked: Bool = false,
+         accountabilityEnabled: Bool = true,
+         accountabilityTriggeredAt: Date? = nil,
+         accountabilityReason: String? = nil,
+@@ -331,6 +333,7 @@
+         self.pornScheduleNextStart = pornScheduleNextStart
+         self.pornSettingsEditableToday = pornSettingsEditableToday
+         self.settingsLockedUntil = settingsLockedUntil
++        self.maintenanceSettingsUnlocked = maintenanceSettingsUnlocked
+         self.accountabilityEnabled = accountabilityEnabled
+         self.accountabilityTriggeredAt = accountabilityTriggeredAt
+         self.accountabilityReason = accountabilityReason
+@@ -354,6 +357,7 @@
+     case setPornSettings
+     case setDistractionSettings
+     case lockSettings
++    case maintenanceUnlockSession
+     case clearAccountability
+     case emergencyBegin
+     case emergencySubmit

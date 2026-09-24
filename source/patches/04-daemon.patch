@@ -1,0 +1,266 @@
+--- a/Sources/bedtimelockd/Daemon.swift
++++ b/Sources/bedtimelockd/Daemon.swift
+@@ -25,6 +25,8 @@
+     private let webProtectionHealthCheckInterval: TimeInterval = 5 * 60
+     private var webProtectionRetryDelay: TimeInterval = 60
+     private var webProtectionLastError: String?
++    // Volatile developer maintenance mode. Never persisted; a daemon restart restores all guards.
++    private var maintenanceSettingsUnlocked = false
+ 
+     init() throws {
+         store = try ConfigStore()
+@@ -44,8 +46,20 @@
+             guard let self else { return .defaultConfig }
+             return self.queue.sync {
+                 var config = self.store.state.current
+-                config.contentFilterEnabled = self.pornProtectionActive()
+-                config.blockedWords = LockConfig.defaultBlockedWords
++                let pornActive = self.pornProtectionActive()
++                let distractionActive = self.distractionProtectionActive()
++                config.contentFilterEnabled = pornActive || distractionActive
++
++                var terms: [String] = []
++                if pornActive {
++                    terms.append(contentsOf: LockConfig.defaultBlockedWords)
++                }
++                if distractionActive {
++                    terms.append(contentsOf: PolicyEngine.normalizedDomains(
++                        self.effectiveDistractionSettings().blockedDomains
++                    ))
++                }
++                config.blockedWords = Array(Set(terms)).sorted()
+                 return config
+             }
+         }, onMatch: { [weak self] pid, word in
+@@ -127,10 +141,12 @@
+ 
+         case .setConfig:
+             guard var new = req.config else { return IPCResponse(ok: false, message: "Missing config") }
+-            if let until = store.state.settingsLockedUntil, until > Date() {
++            if !maintenanceSettingsUnlocked,
++               let until = store.state.settingsLockedUntil,
++               until > Date() {
+                 return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), config: store.state.current)
+             }
+-            guard !status().configChangesBlocked else {
++            if !maintenanceSettingsUnlocked && status().configChangesBlocked {
+                 return IPCResponse(ok: false, message: "Schedule changes are blocked while active or within 5 minutes of a sleep lock.", status: status(), config: store.state.current)
+             }
+             // The content quit filter is daemon-owned and cannot be edited from the GUI.
+@@ -138,7 +154,7 @@
+             new.blockedWords = LockConfig.defaultBlockedWords
+             let loosening = ScheduleEngine.isLoosening(from: store.state.current, to: new)
+             do {
+-                if loosening {
++                if loosening && !maintenanceSettingsUnlocked {
+                     let date = Date().addingTimeInterval(24 * 3600)
+                     try store.mutate { $0.pending = PendingConfig(config: new, activatesAt: date) }
+                     reschedule()
+@@ -200,6 +216,7 @@
+                     )
+                 }
+                 applyWebProtectionIfNeeded(force: true)
++                contentMonitor?.rescanFrontmost()
+                 reschedule()
+                 return IPCResponse(
+                     ok: true,
+@@ -225,7 +242,9 @@
+                 )
+             }
+             let now = Date()
+-            if let until = store.state.settingsLockedUntil, until > now {
++            if !maintenanceSettingsUnlocked,
++               let until = store.state.settingsLockedUntil,
++               until > now {
+                 return IPCResponse(
+                     ok: false,
+                     message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).",
+@@ -233,7 +252,7 @@
+                     distractionSettings: effectiveDistractionSettings()
+                 )
+             }
+-            if distractionProtectionActive(now) {
++            if !maintenanceSettingsUnlocked && distractionProtectionActive(now) {
+                 return IPCResponse(
+                     ok: false,
+                     message: "Distraction settings cannot be weakened while a distraction block is active.",
+@@ -251,6 +270,7 @@
+                     state.distractionSettings = new
+                 }
+                 applyWebProtectionIfNeeded(force: true)
++                contentMonitor?.rescanFrontmost()
+                 reschedule()
+                 return IPCResponse(
+                     ok: true,
+@@ -271,16 +291,18 @@
+                 return IPCResponse(ok: false, message: "Missing Porn Blocker settings.", status: status(), pornSettings: effectivePornSettings())
+             }
+             let now = Date()
+-            if let until = store.state.settingsLockedUntil, until > now {
++            if !maintenanceSettingsUnlocked,
++               let until = store.state.settingsLockedUntil,
++               until > now {
+                 return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), pornSettings: effectivePornSettings())
+             }
+-            if pornProtectionActive(now) {
++            if !maintenanceSettingsUnlocked && pornProtectionActive(now) {
+                 return IPCResponse(ok: false, message: "Porn Blocker settings cannot be changed while a mandatory/manual protection window is active.", status: status(), pornSettings: effectivePornSettings())
+             }
+             let existing = effectivePornSettings()
+             let firstSetup = existing.setupCompleted != true
+             let weekday = Calendar.current.component(.weekday, from: now)
+-            if !firstSetup && weekday != existing.editWeekday {
++            if !maintenanceSettingsUnlocked && !firstSetup && weekday != existing.editWeekday {
+                 return IPCResponse(ok: false, message: "Porn Blocker schedule can only be edited on \(weekdayName(existing.editWeekday)).", status: status(), pornSettings: existing)
+             }
+             new.editWeekday = min(7, max(1, new.editWeekday))
+@@ -322,6 +344,28 @@
+                 return IPCResponse(ok: false, message: "Could not lock settings: \(error)")
+             }
+ 
++        case .maintenanceUnlockSession:
++            maintenanceSettingsUnlocked = true
++            do {
++                try store.mutate { state in
++                    // Remove delayed edits for this debugging session so the GUI always reflects
++                    // what the developer applies now. The persisted Settings Guard timestamp is
++                    // deliberately left intact and becomes authoritative again after daemon restart.
++                    state.pending = nil
++                }
++                reschedule()
++                return IPCResponse(
++                    ok: true,
++                    message: "Maintenance session enabled. Settings guards are bypassed until bedtimelockd restarts.",
++                    status: status(),
++                    config: store.state.current,
++                    pornSettings: effectivePornSettings(),
++                    distractionSettings: effectiveDistractionSettings()
++                )
++            } catch {
++                return IPCResponse(ok: false, message: "Could not enter maintenance session: \(error)", status: status())
++            }
++
+         case .clearAccountability:
+             do {
+                 try store.mutate { state in
+@@ -438,7 +482,8 @@
+     }
+ 
+     private func distractionSettingsEditable(_ now: Date = Date()) -> Bool {
+-        PolicyEngine.distractionSettingsEditable(
++        if maintenanceSettingsUnlocked { return true }
++        return PolicyEngine.distractionSettingsEditable(
+             now: now,
+             distractionProtectionActive: distractionProtectionActive(now),
+             settingsLockedUntil: store.state.settingsLockedUntil
+@@ -451,7 +496,8 @@
+     }
+ 
+     private func pornSettingsEditableToday(_ now: Date = Date()) -> Bool {
+-        PolicyEngine.pornSettingsEditable(
++        if maintenanceSettingsUnlocked { return true }
++        return PolicyEngine.pornSettingsEditable(
+             now: now,
+             settings: effectivePornSettings(),
+             pornProtectionActive: pornProtectionActive(now),
+@@ -467,8 +513,8 @@
+         let nextPorn = nextScheduledPornInterval(now: now)
+         let scheduledDistraction = scheduledDistractionInterval(now: now)
+         let nextDistraction = nextScheduledDistractionInterval(now: now)
+-        let settingsGuard = (store.state.settingsLockedUntil ?? .distantPast) > now
+-        let blocked = settingsGuard || active != nil || (next.map { $0.start.timeIntervalSince(now) <= 300 } ?? false)
++        let settingsGuard = !maintenanceSettingsUnlocked && (store.state.settingsLockedUntil ?? .distantPast) > now
++        let blocked = !maintenanceSettingsUnlocked && (settingsGuard || active != nil || (next.map { $0.start.timeIntervalSince(now) <= 300 } ?? false))
+         let pornSettings = effectivePornSettings()
+ 
+         return DaemonStatus(
+@@ -487,7 +533,8 @@
+             pornScheduledEnd: scheduledPorn?.end,
+             pornScheduleNextStart: nextPorn?.start,
+             pornSettingsEditableToday: pornSettingsEditableToday(now),
+-            settingsLockedUntil: store.state.settingsLockedUntil,
++            settingsLockedUntil: maintenanceSettingsUnlocked ? nil : store.state.settingsLockedUntil,
++            maintenanceSettingsUnlocked: maintenanceSettingsUnlocked,
+             accountabilityEnabled: pornSettings.accountabilityEnabled,
+             accountabilityTriggeredAt: store.state.accountabilityTriggeredAt,
+             accountabilityReason: store.state.accountabilityReason,
+@@ -561,10 +608,10 @@
+                 try? self.store.mutate { $0.distractionBlockUntil = nil }
+             }
+ 
+-            let wasPornActive = self.pornProtectionActive(now)
+             self.applyWebProtectionIfNeeded()
+-            let isPornActive = self.pornProtectionActive(now)
+-            if wasPornActive != isPornActive {
++            // Re-scan at every protection boundary. This catches an already-open browser tab
++            // whose existing connection would otherwise survive a newly-written hosts rule.
++            if self.pornProtectionActive(now) || self.distractionProtectionActive(now) {
+                 self.contentMonitor?.rescanFrontmost()
+             }
+ 
+@@ -637,14 +684,37 @@
+ 
+     private func terminateMatchedApplication(pid: pid_t, word: String) {
+         queue.async {
+-            guard self.pornProtectionActive() else { return }
++            let pornActive = self.pornProtectionActive()
++            let distractionActive = self.distractionProtectionActive()
++            guard pornActive || distractionActive else { return }
+             guard pid > 1, pid != getpid() else { return }
+-            if let app = NSRunningApplication(processIdentifier: pid),
+-               let bundle = app.bundleIdentifier,
++
++            let app = NSRunningApplication(processIdentifier: pid)
++            if let bundle = app?.bundleIdentifier,
+                ["local.deadlock.BedtimeLock", "com.apple.loginwindow", "com.apple.WindowServer", "com.apple.MobileSMS"].contains(bundle) {
+                 return
+             }
+ 
++            let normalizedWord = word.lowercased()
++            let distractionDomains = PolicyEngine.normalizedDomains(
++                self.effectiveDistractionSettings().blockedDomains
++            )
++            let isDistractionMatch = distractionActive && distractionDomains.contains(normalizedWord)
++
++            if isDistractionMatch {
++                // The Accessibility fallback is intentionally browser-scoped for ordinary
++                // distraction domains, avoiding false positives in editors or chat apps that
++                // merely display a blocked URL as text.
++                guard self.isSupportedBrowser(app?.bundleIdentifier) else { return }
++                _ = Darwin.kill(pid, SIGTERM)
++                self.queue.asyncAfter(deadline: .now() + 1) {
++                    if Darwin.kill(pid, 0) == 0 { _ = Darwin.kill(pid, SIGKILL) }
++                }
++                notifyConsole(title: "deadlock", body: "Closed a browser showing a blocked distraction site.")
++                return
++            }
++
++            guard pornActive else { return }
+             let settings = self.effectivePornSettings()
+             let wantsOverlay = settings.motivationalOverlayEnabled
+             let wantsMessage = settings.accountabilityEnabled && !settings.accountabilityRecipient.isEmpty
+@@ -672,6 +742,24 @@
+         }
+     }
+ 
++    private func isSupportedBrowser(_ bundleIdentifier: String?) -> Bool {
++        guard let bundleIdentifier else { return false }
++        let exact: Set<String> = [
++            "com.apple.Safari",
++            "com.google.Chrome",
++            "org.mozilla.firefox",
++            "company.thebrowser.Browser",
++            "com.brave.Browser",
++            "com.microsoft.edgemac",
++            "com.kagi.kagimacOS",
++            "com.vivaldi.Vivaldi",
++            "com.operasoftware.Opera"
++        ]
++        if exact.contains(bundleIdentifier) { return true }
++        let value = bundleIdentifier.lowercased()
++        return value.contains("browser") || value.contains("chrome") || value.contains("firefox") || value.contains("safari")
++    }
++
+     private func applyWebProtectionIfNeeded(force: Bool = false) {
+         let now = Date()
+         let pornEnabled = pornProtectionActive(now)

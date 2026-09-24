@@ -1,0 +1,19 @@
+--- a/Sources/bedtimelockd/WebProtection.swift
++++ b/Sources/bedtimelockd/WebProtection.swift
+@@ -209,10 +209,15 @@
+         if !normalized.hasPrefix("m.") {
+             hosts.append("m." + normalized)
+         }
++        if !normalized.hasPrefix("mobile.") {
++            hosts.append("mobile." + normalized)
++        }
+ 
+         for host in Array(Set(hosts)).sorted() {
++            // Cover both address families. ::1 is the IPv6 loopback address; using
++            // bare :: (unspecified) is not a reliable sink across clients.
+             lines.append("0.0.0.0 \(host)")
+-            lines.append(":: \(host)")
++            lines.append("::1 \(host)")
+         }
+     }
+ 

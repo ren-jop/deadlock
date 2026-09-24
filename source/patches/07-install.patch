@@ -1,0 +1,13 @@
+--- a/install.sh
++++ b/install.sh
+@@ -4,7 +4,9 @@
+ 
+ [[ "$(uname -s)" == "Darwin" ]] || { echo "install.sh must run on macOS." >&2; exit 1; }
+ [[ "${EUID}" -ne 0 ]] || { echo "Run ./install.sh as your normal user; it will request sudo." >&2; exit 1; }
+-[[ -d dist/deadlock.app && -x dist/bedtimelockd ]] || { echo "Run ./build.sh first." >&2; exit 1; }
++echo "Building deadlock…"
++./build.sh
++[[ -d dist/deadlock.app && -x dist/bedtimelockd ]] || { echo "Build did not produce the expected artifacts." >&2; exit 1; }
+ 
+ for plist in \
+   LaunchDaemons/com.deadlock.daemon.plist \
