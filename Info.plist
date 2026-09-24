@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleExecutable</key><string>deadlock</string>
+<key>CFBundleIdentifier</key><string>local.deadlock.BedtimeLock</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleName</key><string>deadlock</string><key>CFBundleDisplayName</key><string>deadlock</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>1.2.2</string><key>CFBundleVersion</key><string>9</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string><key>LSUIElement</key><true/><key>NSHighResolutionCapable</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>deadlock can send an accountability iMessage to the recipient you configure after a blocked adult-content attempt.</string>
+<key>LSMultipleInstancesProhibited</key><true/>
+</dict></plist>

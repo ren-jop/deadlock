@@ -33,23 +33,15 @@ perf() {
   done
 }
 
-web() {
-  echo "== deadlock managed hosts =="
-  awk '/# BEGIN DEADLOCK/{show=1} show{print} /# END DEADLOCK/{show=0}' /etc/hosts || true
-  echo
-  echo "== resolver spot checks =="
-  for host in instagram.com tiktok.com reddit.com x.com; do
-    printf '%-22s ' "$host"
-    dscacheutil -q host -a name "$host" 2>/dev/null | awk '/ip_address:/{printf "%s ", $2} END{print ""}'
-  done
-  echo
-  echo "If a blocked domain still resolves to a public IP while its DEADLOCK section is present, run:"
-  echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
-}
-
 doctor() {
   echo "=== deadlock doctor ==="
-  for path in     "$APP"     /Library/PrivilegedHelperTools/bedtimelockd     /Library/LaunchDaemons/com.deadlock.daemon.plist     /Library/LaunchDaemons/com.deadlock.watchdog.plist     "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"     /var/run/deadlock.sock
+  for path in \
+    "$APP" \
+    /Library/PrivilegedHelperTools/bedtimelockd \
+    /Library/LaunchDaemons/com.deadlock.daemon.plist \
+    /Library/LaunchDaemons/com.deadlock.watchdog.plist \
+    "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist" \
+    /var/run/deadlock.sock
   do
     [[ -e "$path" ]] && ls -ld "$path" || echo "MISSING: $path"
   done
@@ -87,7 +79,6 @@ case "${1:-}" in
     launchctl kickstart -k "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || open -g "$APP"
     ;;
   perf) perf ;;
-  web) web ;;
   doctor) doctor ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor}"; exit 1 ;;
+  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|doctor}"; exit 1 ;;
 esac
