@@ -1,12 +1,14 @@
-# deadlock
+# Deadlock
 
-A native macOS enforcement tool for sleep schedules and distraction rules. The menu-bar app is a controller; a privileged daemon owns enforcement.
+A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Current installable build:** v1.2.4 preview  
-**Platform:** Apple Silicon macOS 14+  
-**Stack:** Swift, SwiftPM, launchd, IOKit, Unix IPC
+**Status:** v1.2.5 preview  
+**Platform:** Apple Silicon, macOS 14+  
+**Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
-> Deadlock installs privileged components and a watchdog. Review the installer and uninstall flow before installing.
+## Why
+
+I wanted blocking rules that would keep working even if I closed the menu-bar app. The interface edits settings and shows status; enforcement lives in a privileged daemon.
 
 ## Install
 
@@ -16,15 +18,56 @@ cd deadlock
 bash ./install.sh
 ```
 
-The installer validates the vendored source snapshot, applies the reviewed patch set under `source/patches/`, builds locally, then installs the app, daemon and watchdog. This is the same source path validated by GitHub Actions on macOS ARM64.
+The installer builds locally, installs the app and privileged components, and configures launchd.
 
-## Website blocking diagnostics
+## What it does
 
-```bash
-bash ./deadlockctl web
+- Enforces configured sleep windows.
+- Blocks configured distraction domains.
+- Keeps distraction domains blocked continuously when the weekly schedule is off.
+- Supports scheduled and manual distraction windows.
+- Keeps enforcement separate from the menu-bar process.
+- Provides a watchdog and recovery path.
+- Exposes status and web diagnostics through `deadlockctl`.
+
+### YouTube
+
+YouTube is handled differently from other blocked domains.
+
+When `youtube.com` is in the distraction list:
+
+- YouTube is blocked in supported browsers.
+- The official YouTube app / installed YouTube web apps are blocked.
+- YouTube is **not** written into Deadlock's DNS / `/etc/hosts` block.
+- IINA is explicitly left alone.
+
+This keeps normal YouTube DNS resolution available for IINA-based playback while removing ordinary browser/app access.
+
+## How it works
+
+```text
+menu-bar app
+     │
+     │ Unix socket
+     ▼
+root daemon
+     ├─ sleep enforcement
+     ├─ distraction policy
+     ├─ browser/app monitoring
+     └─ managed hosts entries
 ```
 
-v1.2.4 makes the configured distraction list continuous when the weekly schedule is off. Enabling the weekly schedule limits blocking to those windows; manual and Focus-triggered blocks still apply. It also includes corrected IPv6 sink entries, mobile hostname variants, immediate rescanning, and a browser-scoped Accessibility fallback for already-open sessions.
+## Diagnostics
+
+```bash
+bash ./deadlockctl status
+bash ./deadlockctl web
+bash ./deadlockctl doctor
+```
+
+`deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
+
+A publicly resolving `youtube.com` is expected in v1.2.5.
 
 ## Update
 
@@ -39,32 +82,14 @@ bash ./install.sh
 bash ./uninstall.sh
 ```
 
-The normal uninstall policy remains intentionally high-friction.
+The normal uninstall path is intentionally high-friction.
 
-## Architecture
+## Development
 
-```text
-menu-bar app
-     │ Unix IPC
-     ▼
-root daemon ── schedule / policy / sleep enforcement
-     │
-     ├─ managed web blocking
-     └─ watchdog / recovery
-```
+The installable source is reconstructed from the vendored source snapshot plus the reviewed patches under `source/patches/`.
 
-## Verification
-
-GitHub Actions reconstructs the same vendored source, applies the same patches, validates shell scripts and runs a release Swift build on macOS ARM64.
-
-Runtime website blocking still depends on the target Mac's Accessibility permission, browser connection state and DNS caching, so `deadlockctl web` is included for diagnosis.
-
-## Project links
-
-- Project page: https://ren-jop.github.io/deadlock/
-- Portfolio: https://ren-jop.github.io/
-- Author: Ren Jopson
+GitHub Actions applies the same patch chain and builds it on macOS ARM64.
 
 ## License
 
-No open-source license has been selected yet. The repository is public for source visibility and review; copyright remains with the author unless a license is added later.
+No open-source license has been selected yet.
