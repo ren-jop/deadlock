@@ -1,45 +1,55 @@
 # deadlock
 
-A native macOS enforcement tool for sleep schedules and distraction rules. The architecture separates a lightweight menu-bar controller from a privileged root daemon so enforcement does not depend on the GUI staying open.
+A native macOS enforcement tool for sleep schedules and distraction rules. The menu-bar app is a controller; a privileged daemon owns enforcement.
 
-**Current build:** v1.2.2 preview  
+**Current installable build:** v1.2.3 preview  
 **Platform:** Apple Silicon macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix IPC
 
-> **Read this before installing.** deadlock installs a root daemon and a watchdog designed to restore enforcement components. Uninstalling is intentionally delayed by a 24-hour cooldown. Review `install.sh`, `scripts/install-system.sh`, and `uninstall.sh` first.
+> Deadlock installs privileged components and a watchdog. Review the installer and uninstall flow before installing.
 
 ## Install
 
 ```bash
 git clone --depth 1 https://github.com/ren-jop/deadlock.git
 cd deadlock
-./install.sh
+bash ./install.sh
 ```
 
-The installer builds locally, explains the privileged components, asks for `sudo` only when installing them, validates the launchd configuration, and starts the daemon, watchdog, and menu app.
+The installer validates the vendored source snapshot, applies the reviewed patch set under `source/patches/`, builds locally, then installs the app, daemon and watchdog. This is the same source path validated by GitHub Actions on macOS ARM64.
 
-## What installation changes
+## Development maintenance session
 
-- `/Applications/deadlock.app`
-- `/Library/PrivilegedHelperTools/bedtimelockd`
-- two system LaunchDaemons
-- `~/Library/LaunchAgents/com.deadlock.menubar.plist`
-- protected state and recovery data under `/var/db/deadlock` and `/Library/Application Support/deadlock`
+To temporarily bypass Deadlock's own settings-edit locks while debugging:
+
+```bash
+bash ./maintenance-unlock.sh
+```
+
+The bypass is memory-only. Restarting `bedtimelockd` or rebooting restores the saved settings restrictions.
+
+## Website blocking diagnostics
+
+```bash
+bash ./deadlockctl web
+```
+
+v1.2.3 adds corrected IPv6 sink entries, mobile hostname variants, immediate rescanning when a block starts, and a browser-scoped Accessibility fallback for already-open browser sessions.
 
 ## Update
 
 ```bash
 git pull --ff-only
-./install.sh
+bash ./install.sh
 ```
 
 ## Uninstall
 
 ```bash
-./uninstall.sh
+bash ./uninstall.sh
 ```
 
-The first request starts or confirms the **24-hour uninstall cooldown**. Run the command again after the daemon reports that the cooldown is complete.
+The normal uninstall policy remains intentionally high-friction.
 
 ## Architecture
 
@@ -49,24 +59,15 @@ menu-bar app
      ▼
 root daemon ── schedule / policy / sleep enforcement
      │
-     └──────── watchdog / recovery
+     ├─ managed web blocking
+     └─ watchdog / recovery
 ```
 
-The working sleep path uses IOKit wake handling plus `pmset sleepnow`. Distraction and adult-content safeguards are separate policies, and Focus can activate distraction protection over local IPC.
+## Verification
 
-## Development
+GitHub Actions reconstructs the same vendored source, applies the same patches, validates shell scripts and runs a release Swift build on macOS ARM64.
 
-```bash
-swift build -c release
-./build.sh
-./deadlock-smoke.sh
-```
-
-CI compiles the Swift package on macOS for each push and pull request.
-
-## Security model
-
-deadlock is intentionally high-friction software. Privileged pieces, launchd configuration, watchdog behavior, install paths, and the uninstall flow are kept visible in this repository so they can be reviewed before installation.
+Runtime website blocking still depends on the target Mac's Accessibility permission, browser connection state and DNS caching, so `deadlockctl web` is included for diagnosis.
 
 ## Project links
 
