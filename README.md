@@ -2,7 +2,7 @@
 
 A native macOS enforcement tool for sleep schedules and distraction rules. The menu-bar app is a controller; a privileged daemon owns enforcement.
 
-**Current installable build:** v1.2.3 preview  
+**Current installable build:** v1.2.4 preview  
 **Platform:** Apple Silicon macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix IPC
 
@@ -34,7 +34,7 @@ The bypass is memory-only. Restarting `bedtimelockd` or rebooting restores the s
 bash ./deadlockctl web
 ```
 
-v1.2.3 adds corrected IPv6 sink entries, mobile hostname variants, immediate rescanning when a block starts, and a browser-scoped Accessibility fallback for already-open browser sessions.
+v1.2.4 adds corrected IPv6 sink entries, mobile hostname variants, immediate rescanning when a block starts, and a browser-scoped Accessibility fallback for already-open browser sessions.
 
 ## Update
 
