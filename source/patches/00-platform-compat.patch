@@ -1,0 +1,37 @@
+--- a/Sources/bedtimelockd/PowerMonitor.swift
++++ b/Sources/bedtimelockd/PowerMonitor.swift
+@@ -2,6 +2,12 @@
+ import IOKit
+ import IOKit.pwr_mgt
+ 
++// These IOKit message macros are no longer imported reliably by current Swift.
++// Values are the public IOMessage.h constants used by IORegisterForSystemPower.
++private let deadlockIOMessageCanSystemSleep: UInt32 = 0xe0000270
++private let deadlockIOMessageSystemWillSleep: UInt32 = 0xe0000280
++private let deadlockIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
++
+ final class PowerMonitor {
+@@ -18,11 +24,11 @@
+             guard let refcon else { return }
+             let me = Unmanaged<PowerMonitor>.fromOpaque(refcon).takeUnretainedValue()
+             switch messageType {
+-            case UInt32(kIOMessageSystemHasPoweredOn):
++            case deadlockIOMessageSystemHasPoweredOn:
+                 me.onWake()
+-            case UInt32(kIOMessageCanSystemSleep):
++            case deadlockIOMessageCanSystemSleep:
+                 IOAllowPowerChange(service, Int(bitPattern: messageArgument))
+-            case UInt32(kIOMessageSystemWillSleep):
++            case deadlockIOMessageSystemWillSleep:
+                 IOAllowPowerChange(service, Int(bitPattern: messageArgument))
+             default:
+                 break
+--- a/Sources/bedtimelockd/SystemHelpers.swift
++++ b/Sources/bedtimelockd/SystemHelpers.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ import SystemConfiguration
+ import Darwin
++import DeadlockShared
+ 
+ func consoleUID() -> uid_t? {
