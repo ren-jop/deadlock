@@ -19,7 +19,7 @@
          case "focus-start", "distraction-start":
              guard args.count > index + 2,
                    let seconds = Double(args[index + 2]),
-@@ -939,6 +942,31 @@
+@@ -939,6 +942,32 @@
          }
  
          let response = try UnixSocketClient.request(request)
