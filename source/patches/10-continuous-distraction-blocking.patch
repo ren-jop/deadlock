@@ -34,7 +34,7 @@
                  distractionDomains: effectiveDistractionSettings().blockedDomains
              ),
              webProtectionLastError: webProtectionLastError,
-@@ -536,7 +545,7 @@
+@@ -536,5 +545,5 @@
              distractionBlockUntil: store.state.distractionBlockUntil,
 -            distractionBlockActive: distractionProtectionActive(now),
 +            distractionBlockActive: distractionWebProtectionEnabled(now),
@@ -50,6 +50,12 @@
                  self.contentMonitor?.rescanFrontmost()
              }
  
+@@ -649,4 +658,4 @@
+-        if (pornProtectionActive(now) || distractionProtectionActive(now)),
++        if (pornProtectionActive(now) || distractionWebProtectionEnabled(now)),
+            let health = nextWebProtectionHealthCheckAt,
+            health > now {
+             dates.append(health)
 @@ -695,7 +704,7 @@
      private func terminateMatchedApplication(pid: pid_t, word: String) {
          queue.async {
@@ -68,9 +74,3 @@
          let protectionsActive = pornEnabled || distractionsEnabled
          let domains = PolicyEngine.normalizedDomains(
              effectiveDistractionSettings().blockedDomains
-@@ -649,7 +658,7 @@
--        if (pornProtectionActive(now) || distractionProtectionActive(now)),
-+        if (pornProtectionActive(now) || distractionWebProtectionEnabled(now)),
-            let health = nextWebProtectionHealthCheckAt,
-            health > now {
-             dates.append(health)
