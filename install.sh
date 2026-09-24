@@ -23,7 +23,7 @@ PATCHES=("$PATCH_DIR"/*.patch)
 (( ${#PARTS[@]} > 0 )) || fail "Bundled source snapshot is missing."
 (( ${#PATCHES[@]} > 0 )) || fail "Patch set is missing."
 
-echo "== Deadlock v1.2.3 preview =="
+echo "== Deadlock v1.2.4 preview =="
 echo "Validating source snapshot..."
 cat "${PARTS[@]}" > "$WORK/deadlock.zip.b64"
 /usr/bin/base64 -D < "$WORK/deadlock.zip.b64" > "$WORK/deadlock.zip"
@@ -45,6 +45,6 @@ cd "$SRC"
 ./install.sh
 
 echo
-echo "Deadlock v1.2.3 installed."
+echo "Deadlock v1.2.4 installed."
 echo "Temporary settings unlock: bash $ROOT/maintenance-unlock.sh"
 echo "Website diagnostics:        bash $ROOT/deadlockctl web"
