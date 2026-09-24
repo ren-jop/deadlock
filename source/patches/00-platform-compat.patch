@@ -11,6 +11,8 @@
 +private let deadlockIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
 +
  final class PowerMonitor {
+     private var rootPort: io_connect_t = 0
+     private var notifier: IONotificationPortRef?
 @@ -18,11 +24,11 @@
              guard let refcon else { return }
              let me = Unmanaged<PowerMonitor>.fromOpaque(refcon).takeUnretainedValue()
@@ -35,3 +37,4 @@
 +import DeadlockShared
  
  func consoleUID() -> uid_t? {
+     var uid: uid_t = 0
