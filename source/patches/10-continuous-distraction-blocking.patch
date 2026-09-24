@@ -1,0 +1,76 @@
+--- a/Sources/bedtimelockd/Daemon.swift
++++ b/Sources/bedtimelockd/Daemon.swift
+@@ -47,7 +47,7 @@
+             return self.queue.sync {
+                 var config = self.store.state.current
+                 let pornActive = self.pornProtectionActive()
+-                let distractionActive = self.distractionProtectionActive()
++                let distractionActive = self.distractionWebProtectionEnabled()
+                 config.contentFilterEnabled = pornActive || distractionActive
+ 
+                 var terms: [String] = []
+@@ -482,6 +482,15 @@
+         if let manual = store.state.distractionBlockUntil, manual > now { return true }
+         return scheduledDistractionInterval(now: now) != nil
+     }
++
++    private func distractionWebProtectionEnabled(_ now: Date = Date()) -> Bool {
++        let settings = effectiveDistractionSettings()
++        let domains = PolicyEngine.normalizedDomains(settings.blockedDomains)
++        guard !domains.isEmpty else { return false }
++        // No weekly schedule means the configured distraction list is enforced continuously.
++        if !settings.scheduleEnabled { return true }
++        return distractionProtectionActive(now)
++    }
+ 
+     private func distractionSettingsEditable(_ now: Date = Date()) -> Bool {
+         if maintenanceSettingsUnlocked { return true }
+@@ -528,7 +537,7 @@
+             accountabilityReason: store.state.accountabilityReason,
+             webProtectionHealthy: webProtection.isHealthy(
+                 pornEnabled: pornProtectionActive(now),
+-                distractionsEnabled: distractionProtectionActive(now),
++                distractionsEnabled: distractionWebProtectionEnabled(now),
+                 distractionDomains: effectiveDistractionSettings().blockedDomains
+             ),
+             webProtectionLastError: webProtectionLastError,
+@@ -536,7 +545,7 @@
+             distractionBlockUntil: store.state.distractionBlockUntil,
+-            distractionBlockActive: distractionProtectionActive(now),
++            distractionBlockActive: distractionWebProtectionEnabled(now),
+             distractionScheduledEnd: scheduledDistraction?.end,
+             distractionScheduleNextStart: nextDistraction?.start,
+             distractionSettingsEditable: distractionSettingsEditable(now)
+@@ -614,7 +623,7 @@
+             self.applyWebProtectionIfNeeded()
+             // Re-scan at every protection boundary. This catches an already-open browser tab
+             // whose existing connection would otherwise survive a newly-written hosts rule.
+-            if self.pornProtectionActive(now) || self.distractionProtectionActive(now) {
++            if self.pornProtectionActive(now) || self.distractionWebProtectionEnabled(now) {
+                 self.contentMonitor?.rescanFrontmost()
+             }
+ 
+@@ -695,7 +704,7 @@
+     private func terminateMatchedApplication(pid: pid_t, word: String) {
+         queue.async {
+             let pornActive = self.pornProtectionActive()
+-            let distractionActive = self.distractionProtectionActive()
++            let distractionActive = self.distractionWebProtectionEnabled()
+             guard pornActive || distractionActive else { return }
+             guard pid > 1, pid != getpid() else { return }
+ 
+@@ -772,7 +781,7 @@
+     private func applyWebProtectionIfNeeded(force: Bool = false) {
+         let now = Date()
+         let pornEnabled = pornProtectionActive(now)
+-        let distractionsEnabled = distractionProtectionActive(now)
++        let distractionsEnabled = distractionWebProtectionEnabled(now)
+         let protectionsActive = pornEnabled || distractionsEnabled
+         let domains = PolicyEngine.normalizedDomains(
+             effectiveDistractionSettings().blockedDomains
+@@ -649,7 +658,7 @@
+-        if (pornProtectionActive(now) || distractionProtectionActive(now)),
++        if (pornProtectionActive(now) || distractionWebProtectionEnabled(now)),
+            let health = nextWebProtectionHealthCheckAt,
+            health > now {
+             dates.append(health)
