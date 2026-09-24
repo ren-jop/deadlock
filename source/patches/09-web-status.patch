@@ -1,0 +1,54 @@
+--- a/Sources/BedtimeLock/main.swift
++++ b/Sources/BedtimeLock/main.swift
+@@ -898,7 +898,7 @@
+ func runCLI() -> Never {
+     let args = CommandLine.arguments
+     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
+-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|maintenance-unlock|uninstall-request|uninstall-status> [seconds]\n", stderr)
++        fputs("usage: deadlock --ipc <status|web-status|focus-start|distraction-start|maintenance-unlock|uninstall-request|uninstall-status> [seconds]\n", stderr)
+         exit(2)
+     }
+ 
+@@ -909,6 +909,9 @@
+         case "status":
+             request = IPCRequest(command: .getStatus)
+ 
++        case "web-status":
++            request = IPCRequest(command: .getConfig)
++
+         case "focus-start", "distraction-start":
+             guard args.count > index + 2,
+                   let seconds = Double(args[index + 2]),
+@@ -939,6 +942,31 @@
+         }
+ 
+         let response = try UnixSocketClient.request(request)
++        if command == "web-status" {
++            let iso = ISO8601DateFormatter()
++            let status = response.status
++            let settings = response.distractionSettings
++            print("distraction active: \(status?.distractionBlockActive == true ? "yes" : "no")")
++            if let until = status?.distractionBlockUntil {
++                print("manual block until: \(iso.string(from: until))")
++            } else {
++                print("manual block until: none")
++            }
++            print("weekly schedule enabled: \(settings?.scheduleEnabled == true ? "yes" : "no")")
++            if let scheduledEnd = status?.distractionScheduledEnd {
++                print("scheduled block active until: \(iso.string(from: scheduledEnd))")
++            } else {
++                print("scheduled block active until: none")
++            }
++            if let next = status?.distractionScheduleNextStart {
++                print("next scheduled block: \(iso.string(from: next))")
++            } else {
++                print("next scheduled block: none")
++            }
++            print("configured domains: \(settings?.blockedDomains.joined(separator: ", ") ?? "(none)")")
++            print("web protection healthy: \(status?.webProtectionHealthy == true ? "yes" : "no")")
++            print("web protection error: \(status?.webProtectionLastError ?? "none")")
++            exit(response.ok ? 0 : 1)
++        }
+         print(response.message)
+         exit(response.ok ? 0 : 1)
+     } catch {
