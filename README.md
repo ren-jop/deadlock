@@ -4,11 +4,11 @@ Native macOS sleep-enforcement and distraction-control software.
 
 Deadlock separates its menu-bar UI from a privileged, event-driven daemon so configured sleep windows and blocking policy do not depend on the GUI remaining open.
 
-> **Preview software.** Deadlock installs privileged launchd services and is intentionally high-friction. Read the source and uninstall behaviour before installing.
+> **Preview software.** Deadlock installs privileged launchd services and is intentionally high-friction. Review the source and uninstall behaviour before installing.
 
 ## Install
 
-**Requirements:** Apple Silicon Mac, macOS 14+, and Apple's Command Line Tools.
+Requirements: **Apple Silicon Mac**, macOS 14+, and Apple's Command Line Tools.
 
 ```bash
 git clone https://github.com/ren-jop/deadlock.git
@@ -16,7 +16,7 @@ cd deadlock
 ./install.sh
 ```
 
-The installer checks the environment, builds a release with Swift Package Manager, installs the app and privileged daemon, and starts the launchd services. It asks for `sudo` only when system-level components are installed.
+The installer validates the bundled v1.2.2 source snapshot, builds a release with Swift Package Manager, installs the app and privileged daemon, and starts the launchd services. It asks for `sudo` only when system-level components are installed.
 
 To remove Deadlock:
 
@@ -24,7 +24,7 @@ To remove Deadlock:
 ./uninstall.sh
 ```
 
-Deadlock enforces a 24-hour uninstall cooldown through the running daemon.
+Deadlock's daemon intentionally enforces the project's uninstall-delay policy; the root wrapper uses the same verified source snapshot as installation.
 
 ## Architecture
 
@@ -48,14 +48,14 @@ Focus ───────────────► daemon IPC
 - IOKit wake handling and `pmset sleepnow` for sleep enforcement
 - local Unix-socket IPC between UI, Focus and daemon
 - launchd-managed menu app, daemon and watchdog
-- ad-hoc code signing for local builds
-- event-driven design to avoid unnecessary idle polling
+- ad-hoc signing for local preview builds
+- event-driven design intended to keep idle overhead low
 
-## Repository layout
+## Reproducible source snapshot
 
-The currently validated **v1.2.2** source snapshot is stored in `source/deadlock-v1.2.2.zip`. The root installer extracts that snapshot to a temporary directory, builds it, then discards the build workspace.
+The currently validated **v1.2.2** snapshot is vendored under `source/` as ordered base64 chunks. `install.sh` concatenates them, decodes the ZIP, runs an integrity check, and only then builds it in a temporary directory.
 
-This keeps the public installation path reproducible while the project is still in preview. A notarized binary distribution is not provided yet.
+This avoids depending on an external download while the project is still in preview. A notarized binary distribution is not provided yet.
 
 ## Related projects
 

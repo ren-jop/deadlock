@@ -2,13 +2,23 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-ARCHIVE="$ROOT/source/deadlock-v1.2.2.zip"
+PREFIX="$ROOT/source/deadlock-v1.2.2.zip.b64.part-"
 
-[[ "$(uname -s)" == "Darwin" ]] || { echo "error: macOS only." >&2; exit 1; }
-[[ -f "$ARCHIVE" ]] || { echo "error: bundled source archive is missing." >&2; exit 1; }
+fail() { echo "error: $*" >&2; exit 1; }
+
+[[ "$(uname -s)" == "Darwin" ]] || fail "Deadlock supports macOS only."
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/deadlock-uninstall.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
-ditto -x -k "$ARCHIVE" "$WORK"
+
+shopt -s nullglob
+PARTS=("${PREFIX}"*)
+(( ${#PARTS[@]} > 0 )) || fail "Bundled source snapshot is missing."
+
+cat "${PARTS[@]}" > "$WORK/deadlock.zip.b64"
+/usr/bin/base64 -D < "$WORK/deadlock.zip.b64" > "$WORK/deadlock.zip"
+/usr/bin/unzip -tq "$WORK/deadlock.zip" >/dev/null || fail "Bundled source snapshot failed its integrity check."
+/usr/bin/ditto -x -k "$WORK/deadlock.zip" "$WORK"
+
 chmod +x "$WORK/deadlock/uninstall.sh"
 exec "$WORK/deadlock/uninstall.sh"
