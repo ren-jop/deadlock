@@ -3,11 +3,22 @@ import SystemConfiguration
 import Darwin
 import DeadlockShared
 
-func consoleUID() -> uid_t? {
+func consoleUser() -> (name: String, uid: uid_t)? {
     var uid: uid_t = 0
     var gid: gid_t = 0
-    guard let name = SCDynamicStoreCopyConsoleUser(nil, &uid, &gid) as String?, name != "loginwindow", name != "_mbsetupuser" else { return nil }
-    return uid
+    guard let name = SCDynamicStoreCopyConsoleUser(nil, &uid, &gid) as String?,
+          name != "loginwindow",
+          name != "_mbsetupuser"
+    else { return nil }
+    return (name, uid)
+}
+
+func consoleUserName() -> String? {
+    consoleUser()?.name
+}
+
+func consoleUID() -> uid_t? {
+    consoleUser()?.uid
 }
 
 @discardableResult
