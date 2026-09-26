@@ -993,22 +993,22 @@ enum MenuBarSingleton {
             "/tmp/deadlock-menubar-\(getuid()).lock"
         let descriptor = Darwin.open(
             path,
-            O_CREAT | O_RDWR,
+            O_CREAT
+                | O_RDWR
+                | O_EXLOCK
+                | O_NONBLOCK,
             S_IRUSR | S_IWUSR
         )
 
         guard descriptor >= 0 else {
-            // Failing open is unusual. Prefer one usable UI over making
-            // Deadlock disappear entirely.
-            return true
-        }
+            if errno == EWOULDBLOCK
+                || errno == EAGAIN {
+                return false
+            }
 
-        guard Darwin.flock(
-            descriptor,
-            LOCK_EX | LOCK_NB
-        ) == 0 else {
-            Darwin.close(descriptor)
-            return false
+            // Failing for an unrelated filesystem reason is unusual. Prefer
+            // one usable UI over making Deadlock disappear entirely.
+            return true
         }
 
         lockDescriptor = descriptor
