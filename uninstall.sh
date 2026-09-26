@@ -28,6 +28,38 @@ fi
 
 echo "Cooldown complete. Removing deadlock..."
 
+# Restore Chrome's pre-Deadlock URLBlocklist before deleting Deadlock state.
+sudo python3 - <<'PY'
+import json
+import plistlib
+from pathlib import Path
+
+state_path = Path('/Library/Application Support/deadlock/browser-policy-state.json')
+if state_path.exists():
+    try:
+        snapshot = json.loads(state_path.read_text())
+        username = snapshot.get('username')
+        if username:
+            policy = Path('/Library/Managed Preferences') / username / 'com.google.Chrome.plist'
+            values = {}
+            if policy.exists():
+                with policy.open('rb') as fh:
+                    values = plistlib.load(fh)
+            original = snapshot.get('chromeURLBlocklist', None)
+            if original is None:
+                values.pop('URLBlocklist', None)
+            else:
+                values['URLBlocklist'] = original
+            if values:
+                policy.parent.mkdir(parents=True, exist_ok=True)
+                with policy.open('wb') as fh:
+                    plistlib.dump(values, fh)
+            elif policy.exists():
+                policy.unlink()
+    except Exception as exc:
+        print(f"warning: could not restore Chrome URLBlocklist: {exc}")
+PY
+
 # Remove only sections owned by deadlock from /etc/hosts before stopping enforcement.
 sudo python3 - <<'PY'
 from pathlib import Path
