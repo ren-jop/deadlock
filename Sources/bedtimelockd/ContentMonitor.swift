@@ -181,7 +181,7 @@ final class ContentMonitor {
         ) == .success ? (roleValue as? String ?? "") : ""
 
         var pieces: [String] = []
-        if role == kAXTextFieldRole as String || role == kAXComboBoxRole as String {
+        if role == "AXTextField" || role == "AXComboBox" {
             for attr in [
                 kAXValueAttribute,
                 kAXTitleAttribute,
