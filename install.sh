@@ -17,7 +17,7 @@ xcrun --find swift >/dev/null 2>&1 || fail "Swift was not found. Install Apple's
 
 cd "$ROOT"
 
-echo "== Deadlock v1.3.0 preview =="
+echo "== Deadlock v1.3.1 preview =="
 echo "Building the current repository source..."
 ./build.sh
 
@@ -72,7 +72,7 @@ sudo launchctl print system/com.deadlock.daemon >/dev/null   || fail "The privil
 launchctl print "gui/$UID_NOW/com.deadlock.menubar" >/dev/null   || fail "The menu-bar helper did not start."
 
 echo
-echo "Deadlock v1.3.0 installed from the current source tree."
-echo "Chrome, Helium and Firefox YouTube blocking use native browser policy. Safari uses a user-session guard and may request one-time Accessibility permission so only Safari tabs are closed.\n"
+echo "Deadlock v1.3.1 installed from the current source tree."
+echo "Deadlock now recognizes the major Chromium, Firefox, WebKit and Firefox-fork browsers. Native policy is used where supported; all other recognized browsers fall back to one-time Accessibility so only the active blocked tab is closed.\n"
 echo "IINA is not automated or DNS-blocked."
 echo "Diagnostics: bash $ROOT/deadlockctl web"
