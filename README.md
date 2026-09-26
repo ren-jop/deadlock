@@ -145,19 +145,3 @@ The older vendored snapshot and `source/patches/` directory are retained as hist
 
 No open-source license has been selected yet.
 
-
-## Temporary distraction allowances
-
-A blocked distraction can be allowed for a short period without removing it from the permanent block list.
-
-From the app, right-click an enabled distraction preset and choose **Allow until midnight**.
-
-From Terminal:
-
-```bash
-./deadlockctl allow-today discord.com
-# convenience alias
-./deadlockctl allow-discord-today
-```
-
-The daemon persists the allowance, removes that domain from active web/content enforcement, automatically expires it, and reapplies blocking when the end time is reached.
