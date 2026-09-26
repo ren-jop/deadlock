@@ -194,10 +194,19 @@ final class WebProtection {
     private func buildDistractionBlock(_ domains: [String]) -> String {
         var lines = [distractionBegin]
         for domain in domains {
+            // YouTube is enforced at the browser/app layer instead of DNS so
+            // IINA and yt-dlp can keep normal YouTube resolution.
+            if isBrowserOnlyDomain(domain) { continue }
             appendBlockedHost(domain, lines: &lines)
         }
         lines.append(distractionEnd)
         return lines.joined(separator: "\n")
+    }
+
+    private func isBrowserOnlyDomain(_ domain: String) -> Bool {
+        let host = domain.lowercased()
+        let browserOnly = ["youtube.com", "youtu.be", "youtube-nocookie.com"]
+        return browserOnly.contains { host == $0 || host.hasSuffix("." + $0) }
     }
 
     private func appendBlockedHost(_ domain: String, lines: inout [String]) {
