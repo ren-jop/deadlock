@@ -17,7 +17,7 @@ xcrun --find swift >/dev/null 2>&1 || fail "Swift was not found. Install Apple's
 
 cd "$ROOT"
 
-echo "== Deadlock v1.2.6 preview =="
+echo "== Deadlock v1.2.7 preview =="
 echo "Building the current repository source..."
 ./build.sh
 
@@ -72,7 +72,7 @@ sudo launchctl print system/com.deadlock.daemon >/dev/null   || fail "The privil
 launchctl print "gui/$UID_NOW/com.deadlock.menubar" >/dev/null   || fail "The menu-bar helper did not start."
 
 echo
-echo "Deadlock v1.2.6 installed from the current source tree."
-echo "If macOS asks for Automation access when a blocked YouTube tab is opened, allow deadlock to control that browser."
+echo "Deadlock v1.2.7 installed from the current source tree."
+echo "Chrome YouTube blocking uses Chrome mandatory URLBlocklist policy; no browser Automation permission is required for Chrome.\n"
 echo "IINA is not automated or DNS-blocked."
 echo "Diagnostics: bash $ROOT/deadlockctl web"
