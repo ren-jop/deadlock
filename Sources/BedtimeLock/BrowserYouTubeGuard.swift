@@ -101,7 +101,8 @@ final class BrowserYouTubeGuard {
              "com.microsoft.edgemac",
              "company.thebrowser.Browser",
              "com.vivaldi.Vivaldi",
-             "com.operasoftware.Opera":
+             "com.operasoftware.Opera",
+             "net.imput.helium":
             return .chromium
 
         default:
