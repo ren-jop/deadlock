@@ -29,8 +29,8 @@ jobs:
           plutil -lint LaunchDaemons/com.deadlock.watchdog.plist
           plutil -lint LaunchAgents/com.deadlock.menubar.plist
 
-      - name: Build current source
+      - name: Build current source and signed app bundle
         shell: bash
         run: |
           set -euo pipefail
-          swift build -c release
+          ./build.sh
