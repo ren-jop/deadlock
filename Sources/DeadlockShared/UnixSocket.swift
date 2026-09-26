@@ -91,9 +91,10 @@ public enum UnixSocketClient {
         guard fd >= 0 else { throw SocketError.system(String(cString: strerror(errno))) }
         defer { Darwin.close(fd) }
         var address = try makeAddress(path)
+        let addressLength = socketLength(address)
         let rc = withUnsafePointer(to: &address) { p in
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.connect(fd, $0, socketLength(address))
+                Darwin.connect(fd, $0, addressLength)
             }
         }
         guard rc == 0 else { throw SocketError.system(String(cString: strerror(errno))) }
@@ -112,9 +113,10 @@ public final class UnixSocketServer: @unchecked Sendable {
         let s = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard s >= 0 else { throw SocketError.system(String(cString: strerror(errno))) }
         var address = try makeAddress(path)
+        let addressLength = socketLength(address)
         let rc = withUnsafePointer(to: &address) { p in
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(s, $0, socketLength(address))
+                Darwin.bind(s, $0, addressLength)
             }
         }
         guard rc == 0 else {
