@@ -12,6 +12,8 @@ final class BrowserPolicyProtection {
         var username: String
         var chromeURLBlocklist: [String]?
         var chromeCaptured: Bool?
+        var heliumURLBlocklist: [String]?
+        var heliumCaptured: Bool?
 
         var firefoxEnterprisePoliciesEnabled: Bool?
         var firefoxEnterprisePoliciesEnabledCaptured: Bool?
@@ -23,6 +25,7 @@ final class BrowserPolicyProtection {
         DeadlockPaths.support + "/browser-policy-state.json"
 
     private let chromeBundleID = "com.google.Chrome"
+    private let heliumBundleID = "net.imput.helium"
     private let firefoxPreferencesDomain =
         "/Library/Preferences/org.mozilla.firefox"
     private let firefoxPreferencesPath =
@@ -54,12 +57,26 @@ final class BrowserPolicyProtection {
             return true
         }
 
-        let chromeValues = readChromePolicy(username: user)
+        let chromeValues = readChromiumPolicy(
+            bundleID: chromeBundleID,
+            username: user
+        )
         let chromeCurrent = stringArray(
             chromeValues["URLBlocklist"]
         )
         let chromeHealthy = chromeYouTubeEntries.allSatisfy(
             chromeCurrent.contains
+        )
+
+        let heliumValues = readChromiumPolicy(
+            bundleID: heliumBundleID,
+            username: user
+        )
+        let heliumCurrent = stringArray(
+            heliumValues["URLBlocklist"]
+        )
+        let heliumHealthy = chromeYouTubeEntries.allSatisfy(
+            heliumCurrent.contains
         )
 
         let firefoxValues = readFirefoxPreferences()
@@ -73,7 +90,10 @@ final class BrowserPolicyProtection {
             firefoxCurrent.contains
         )
 
-        return chromeHealthy && firefoxEnabled && firefoxHealthy
+        return chromeHealthy
+            && heliumHealthy
+            && firefoxEnabled
+            && firefoxHealthy
     }
 
     func apply(youtubeBlocked: Bool) throws {
@@ -87,9 +107,20 @@ final class BrowserPolicyProtection {
     private func enableYouTubeBlock() throws {
         guard let user = consoleUserName() else { return }
 
-        var chromeValues = readChromePolicy(username: user)
+        var chromeValues = readChromiumPolicy(
+            bundleID: chromeBundleID,
+            username: user
+        )
         var chromeCurrent = stringArray(
             chromeValues["URLBlocklist"]
+        )
+
+        var heliumValues = readChromiumPolicy(
+            bundleID: heliumBundleID,
+            username: user
+        )
+        var heliumCurrent = stringArray(
+            heliumValues["URLBlocklist"]
         )
 
         let firefoxValues = readFirefoxPreferences()
@@ -128,6 +159,14 @@ final class BrowserPolicyProtection {
             snapshot.chromeCaptured = true
         }
 
+        if snapshot.heliumCaptured != true {
+            snapshot.heliumURLBlocklist =
+                heliumValues["URLBlocklist"] == nil
+                ? nil
+                : heliumCurrent
+            snapshot.heliumCaptured = true
+        }
+
         if snapshot.firefoxEnterprisePoliciesEnabledCaptured
             != true {
             snapshot.firefoxEnterprisePoliciesEnabled =
@@ -157,8 +196,20 @@ final class BrowserPolicyProtection {
             chromeCurrent.append(entry)
         }
         chromeValues["URLBlocklist"] = chromeCurrent
-        try writeChromePolicy(
+        try writeChromiumPolicy(
             chromeValues,
+            bundleID: chromeBundleID,
+            username: user
+        )
+
+        for entry in chromeYouTubeEntries
+            where !heliumCurrent.contains(entry) {
+            heliumCurrent.append(entry)
+        }
+        heliumValues["URLBlocklist"] = heliumCurrent
+        try writeChromiumPolicy(
+            heliumValues,
+            bundleID: heliumBundleID,
             username: user
         )
 
@@ -172,7 +223,8 @@ final class BrowserPolicyProtection {
     private func restorePreviousPolicy() throws {
         guard let snapshot = loadSnapshot() else { return }
 
-        var chromeValues = readChromePolicy(
+        var chromeValues = readChromiumPolicy(
+            bundleID: chromeBundleID,
             username: snapshot.username
         )
         if let original = snapshot.chromeURLBlocklist {
@@ -182,10 +234,30 @@ final class BrowserPolicyProtection {
                 forKey: "URLBlocklist"
             )
         }
-        try writeChromePolicy(
+        try writeChromiumPolicy(
             chromeValues,
+            bundleID: chromeBundleID,
             username: snapshot.username
         )
+
+        if snapshot.heliumCaptured == true {
+            var heliumValues = readChromiumPolicy(
+                bundleID: heliumBundleID,
+                username: snapshot.username
+            )
+            if let original = snapshot.heliumURLBlocklist {
+                heliumValues["URLBlocklist"] = original
+            } else {
+                heliumValues.removeValue(
+                    forKey: "URLBlocklist"
+                )
+            }
+            try writeChromiumPolicy(
+                heliumValues,
+                bundleID: heliumBundleID,
+                username: snapshot.username
+            )
+        }
 
         if snapshot.firefoxFlattenedWebsiteFilterBlockCaptured
             == true {
@@ -216,36 +288,42 @@ final class BrowserPolicyProtection {
         )
     }
 
-    // MARK: - Chrome
+    // MARK: - Chromium-family browsers
 
-    private func chromePolicyDirectory(
+    private func managedPolicyDirectory(
         username: String
     ) -> String {
         "/Library/Managed Preferences/\(username)"
     }
 
-    private func chromePolicyPath(
+    private func chromiumPolicyPath(
+        bundleID: String,
         username: String
     ) -> String {
-        chromePolicyDirectory(username: username)
-            + "/\(chromeBundleID).plist"
+        managedPolicyDirectory(username: username)
+            + "/\(bundleID).plist"
     }
 
-    private func readChromePolicy(
+    private func readChromiumPolicy(
+        bundleID: String,
         username: String
     ) -> [String: Any] {
         readPlist(
-            path: chromePolicyPath(username: username)
+            path: chromiumPolicyPath(
+                bundleID: bundleID,
+                username: username
+            )
         )
     }
 
-    private func writeChromePolicy(
+    private func writeChromiumPolicy(
         _ values: [String: Any],
+        bundleID: String,
         username: String
     ) throws {
         let fm = FileManager.default
         let directory =
-            chromePolicyDirectory(username: username)
+            managedPolicyDirectory(username: username)
 
         try fm.createDirectory(
             atPath: directory,
@@ -254,8 +332,10 @@ final class BrowserPolicyProtection {
         _ = chmod(directory, 0o755)
         _ = chown(directory, 0, 0)
 
-        let path =
-            chromePolicyPath(username: username)
+        let path = chromiumPolicyPath(
+            bundleID: bundleID,
+            username: username
+        )
 
         if values.isEmpty {
             try? fm.removeItem(atPath: path)
@@ -275,7 +355,8 @@ final class BrowserPolicyProtection {
         _ = chown(path, 0, 0)
 
         NSLog(
-            "deadlock: Chrome URLBlocklist updated at %@",
+            "deadlock: Chromium URLBlocklist updated for %@ at %@",
+            bundleID,
             path
         )
     }
