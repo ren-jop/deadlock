@@ -75,12 +75,153 @@ final class ContentMonitor {
             guard !words.isEmpty else { return }
 
             let app = AXUIElementCreateApplication(pid)
+            let youtubeConfigured = words.contains(where: self.isYouTubeDomain)
+
+            if youtubeConfigured {
+                if self.isOfficialYouTubeApp(pid: pid) {
+                    self.onMatch(pid, "youtube.com")
+                    return
+                }
+
+                if self.isSupportedBrowser(pid: pid) {
+                    let locationText = self.collectBrowserLocationText(
+                        app,
+                        depth: 0,
+                        budget: 180
+                    ).lowercased()
+                    if self.containsYouTubeURL(locationText) {
+                        self.onMatch(pid, "youtube.com")
+                        return
+                    }
+                }
+            }
+
+            // Keep browser-only YouTube out of the generic accessibility text
+            // scan so a search result or chat message mentioning youtube.com
+            // cannot trigger the blocker.
+            let genericWords = words.filter { !self.isYouTubeDomain($0) }
+            guard !genericWords.isEmpty else { return }
+
             let text = self.collectText(app, depth: 0, budget: 250).lowercased()
             guard !text.isEmpty else { return }
-            if let match = words.first(where: { text.contains($0) }) {
+            if let match = genericWords.first(where: { text.contains($0) }) {
                 self.onMatch(pid, match)
             }
         }
+    }
+
+    private func isYouTubeDomain(_ value: String) -> Bool {
+        let host = value.lowercased()
+        return host == "youtube.com"
+            || host.hasSuffix(".youtube.com")
+            || host == "youtu.be"
+            || host.hasSuffix(".youtu.be")
+            || host == "youtube-nocookie.com"
+            || host.hasSuffix(".youtube-nocookie.com")
+    }
+
+    private func containsYouTubeURL(_ value: String) -> Bool {
+        value.contains("youtube.com")
+            || value.contains("youtu.be")
+            || value.contains("youtube-nocookie.com")
+    }
+
+    private func isSupportedBrowser(pid: pid_t) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              let bundle = app.bundleIdentifier
+        else { return false }
+
+        let exact: Set<String> = [
+            "com.apple.Safari",
+            "com.google.Chrome",
+            "org.mozilla.firefox",
+            "company.thebrowser.Browser",
+            "com.brave.Browser",
+            "com.microsoft.edgemac",
+            "com.kagi.kagimacOS",
+            "com.vivaldi.Vivaldi",
+            "com.operasoftware.Opera"
+        ]
+        if exact.contains(bundle) { return true }
+
+        let value = bundle.lowercased()
+        return value.contains("browser")
+            || value.contains("chrome")
+            || value.contains("firefox")
+            || value.contains("safari")
+    }
+
+    private func isOfficialYouTubeApp(pid: pid_t) -> Bool {
+        guard let app = NSRunningApplication(processIdentifier: pid) else {
+            return false
+        }
+        let bundle = (app.bundleIdentifier ?? "").lowercased()
+        if bundle.contains("iina") { return false }
+        if bundle == "com.google.ios.youtube" || bundle == "com.google.youtube" {
+            return true
+        }
+        return app.localizedName?.lowercased() == "youtube"
+            && (bundle.contains("safari")
+                || bundle.contains("chrome")
+                || bundle.contains("google"))
+    }
+
+    private func collectBrowserLocationText(
+        _ element: AXUIElement,
+        depth: Int,
+        budget: Int
+    ) -> String {
+        guard depth <= 7, budget > 0 else { return "" }
+
+        var roleValue: CFTypeRef?
+        let role = AXUIElementCopyAttributeValue(
+            element,
+            kAXRoleAttribute as CFString,
+            &roleValue
+        ) == .success ? (roleValue as? String ?? "") : ""
+
+        var pieces: [String] = []
+        if role == kAXTextFieldRole as String || role == kAXComboBoxRole as String {
+            for attr in [
+                kAXValueAttribute,
+                kAXTitleAttribute,
+                kAXDescriptionAttribute,
+                kAXHelpAttribute
+            ] {
+                var value: CFTypeRef?
+                if AXUIElementCopyAttributeValue(
+                    element,
+                    attr as CFString,
+                    &value
+                ) == .success,
+                   let text = value as? String,
+                   !text.isEmpty {
+                    pieces.append(text)
+                }
+            }
+        }
+
+        var childrenValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(
+            element,
+            kAXChildrenAttribute as CFString,
+            &childrenValue
+        ) == .success,
+           let children = childrenValue as? [AXUIElement] {
+            var remaining = budget - 1
+            for child in children.prefix(40) where remaining > 0 {
+                pieces.append(
+                    collectBrowserLocationText(
+                        child,
+                        depth: depth + 1,
+                        budget: remaining
+                    )
+                )
+                remaining -= 1
+            }
+        }
+
+        return pieces.joined(separator: "\n")
     }
 
     private func collectText(_ element: AXUIElement, depth: Int, budget: Int) -> String {
