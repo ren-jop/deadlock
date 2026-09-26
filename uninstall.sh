@@ -56,8 +56,34 @@ if state_path.exists():
                     plistlib.dump(values, fh)
             elif policy.exists():
                 policy.unlink()
+
+        firefox = Path('/Library/Preferences/org.mozilla.firefox.plist')
+        fvals = {}
+        if firefox.exists():
+            with firefox.open('rb') as fh:
+                fvals = plistlib.load(fh)
+
+        if snapshot.get('firefoxFlattenedWebsiteFilterBlockCaptured') is True:
+            original = snapshot.get('firefoxFlattenedWebsiteFilterBlock', None)
+            if original is None:
+                fvals.pop('WebsiteFilter__Block', None)
+            else:
+                fvals['WebsiteFilter__Block'] = original
+
+        if snapshot.get('firefoxEnterprisePoliciesEnabledCaptured') is True:
+            original = snapshot.get('firefoxEnterprisePoliciesEnabled', None)
+            if original is None:
+                fvals.pop('EnterprisePoliciesEnabled', None)
+            else:
+                fvals['EnterprisePoliciesEnabled'] = bool(original)
+
+        if fvals:
+            with firefox.open('wb') as fh:
+                plistlib.dump(fvals, fh)
+        elif firefox.exists():
+            firefox.unlink()
     except Exception as exc:
-        print(f"warning: could not restore Chrome URLBlocklist: {exc}")
+        print(f"warning: could not restore browser policy: {exc}")
 PY
 
 # Remove only sections owned by deadlock from /etc/hosts before stopping enforcement.
