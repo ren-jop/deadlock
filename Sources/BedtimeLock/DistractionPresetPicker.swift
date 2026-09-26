@@ -88,26 +88,7 @@ struct DistractionPresetPicker: View {
                                 !state.status
                                     .distractionSettingsEditable
                             )
-                            .contextMenu {
-                                if enabled {
-                                    Button(
-                                        state.isDistractionPresetTemporarilyAllowed(
-                                            preset
-                                        )
-                                        ? "Allowed until midnight"
-                                        : "Allow until midnight"
-                                    ) {
-                                        state.allowDistractionPresetUntilEndOfToday(
-                                            preset
-                                        )
-                                    }
-                                    .disabled(
-                                        state.isDistractionPresetTemporarilyAllowed(
-                                            preset
-                                        )
-                                    )
-                                }
-                            }
+
                         }
                     }
                 }
