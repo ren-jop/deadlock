@@ -46,8 +46,18 @@ web() {
     dscacheutil -q host -a name "$host" 2>/dev/null | awk '/ip_address:/{printf "%s ", $2} END{print ""}'
   done
   echo
-  echo "YouTube resolving publicly is expected: Deadlock blocks it at the browser/app layer"
-  echo "so IINA and other non-browser clients can keep normal DNS access."
+  echo "== Chrome mandatory policy =="
+  USER_NAME="$(id -un)"
+  POLICY="/Library/Managed Preferences/$USER_NAME/com.google.Chrome.plist"
+  if [[ -f "$POLICY" ]]; then
+    plutil -p "$POLICY" 2>/dev/null | grep -A12 'URLBlocklist' || plutil -p "$POLICY" 2>/dev/null || true
+  else
+    echo "No Chrome managed policy file at: $POLICY"
+  fi
+  echo
+  echo "YouTube resolving publicly is expected: Chrome blocks it with URLBlocklist"
+  echo "while IINA and other non-browser clients keep normal DNS access."
+  echo "Verify in Chrome at chrome://policy → URLBlocklist."
   echo
   echo "For other configured domains that unexpectedly resolve publicly, flush caches with:"
   echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
