@@ -83,7 +83,9 @@ enum BrowserCatalog {
         _ bundle: String
     ) -> Bool {
         let prefixes = [
-            "org.mozilla.firefox"
+            "org.mozilla.firefox",
+            "org.torproject.torbrowser",
+            "net.mullvad.mullvadbrowser"
         ]
 
         if prefixes.contains(
@@ -145,7 +147,10 @@ enum BrowserCatalog {
             "floorp",
             "duckduckgo",
             "orion",
-            "min"
+            "min",
+            "tor browser",
+            "mullvad browser",
+            "pale moon"
         ]
 
         return names.contains {
