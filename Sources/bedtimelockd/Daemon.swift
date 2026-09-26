@@ -55,9 +55,10 @@ final class DeadlockDaemon {
                     terms.append(contentsOf: LockConfig.defaultBlockedWords)
                 }
                 if distractionActive {
-                    terms.append(contentsOf: PolicyEngine.normalizedDomains(
-                        self.effectiveDistractionSettings().blockedDomains
-                    ))
+                    terms.append(
+                        contentsOf:
+                            self.effectiveDistractionDomains()
+                    )
                 }
                 config.blockedWords = Array(Set(terms)).sorted()
                 return config
@@ -96,6 +97,68 @@ final class DeadlockDaemon {
 
     private func effectiveDistractionSettings() -> DistractionSettings {
         store.state.distractionSettings ?? .defaultSettings
+    }
+
+    private func activeTemporaryAllowedDistractionDomains(
+        _ now: Date = Date()
+    ) -> [String: Date] {
+        (store.state.temporaryAllowedDistractionDomains ?? [:])
+            .filter { _, until in
+                until > now
+            }
+    }
+
+    private func distractionDomain(
+        _ blocked: String,
+        matches allowance: String
+    ) -> Bool {
+        blocked == allowance
+            || blocked.hasSuffix("." + allowance)
+            || allowance.hasSuffix("." + blocked)
+    }
+
+    private func effectiveDistractionDomains(
+        _ now: Date = Date()
+    ) -> [String] {
+        let configured = PolicyEngine.normalizedDomains(
+            effectiveDistractionSettings().blockedDomains
+        )
+        let allowances =
+            activeTemporaryAllowedDistractionDomains(now)
+                .keys
+
+        guard !allowances.isEmpty else {
+            return configured
+        }
+
+        return configured.filter { blocked in
+            !allowances.contains { allowance in
+                distractionDomain(
+                    blocked,
+                    matches: allowance
+                )
+            }
+        }
+    }
+
+    private func pruneExpiredTemporaryAllowances(
+        _ now: Date = Date()
+    ) {
+        let existing =
+            store.state.temporaryAllowedDistractionDomains
+            ?? [:]
+        let active = existing.filter { _, until in
+            until > now
+        }
+
+        guard active.count != existing.count else {
+            return
+        }
+
+        try? store.mutate { state in
+            state.temporaryAllowedDistractionDomains =
+                active.isEmpty ? nil : active
+        }
     }
 
     private func acceptLoop() {
@@ -225,6 +288,89 @@ final class DeadlockDaemon {
                 return IPCResponse(
                     ok: false,
                     message: "Could not start distraction block: \(error)",
+                    status: status()
+                )
+            }
+
+        case .allowDistractionDomainUntil:
+            let now = Date()
+            guard let rawDomain = req.text,
+                  let domain = PolicyEngine.normalizedDomains(
+                    [rawDomain]
+                  ).first
+            else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Missing or invalid distraction domain.",
+                    status: status()
+                )
+            }
+
+            guard let requestedUntil = req.date,
+                  requestedUntil > now
+            else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Temporary allowance needs a future end date.",
+                    status: status()
+                )
+            }
+
+            let configured = PolicyEngine.normalizedDomains(
+                effectiveDistractionSettings().blockedDomains
+            )
+            guard configured.contains(where: {
+                distractionDomain(
+                    $0,
+                    matches: domain
+                )
+            }) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "\(domain) is not in the distraction block list.",
+                    status: status()
+                )
+            }
+
+            // Keep this deliberately temporary. 36 hours covers a local
+            // midnight allowance even across a daylight-saving transition.
+            let maximumUntil =
+                now.addingTimeInterval(
+                    36 * 60 * 60
+                )
+            let until = min(
+                requestedUntil,
+                maximumUntil
+            )
+
+            do {
+                try store.mutate { state in
+                    var allowances =
+                        state
+                        .temporaryAllowedDistractionDomains
+                        ?? [:]
+                    allowances[domain] = until
+                    state
+                        .temporaryAllowedDistractionDomains =
+                        allowances
+                }
+                applyWebProtectionIfNeeded(
+                    force: true
+                )
+                reschedule()
+                return IPCResponse(
+                    ok: true,
+                    message:
+                        "\(domain) allowed until "
+                        + ISO8601DateFormatter()
+                            .string(from: until),
+                    status: status()
+                )
+            } catch {
+                return IPCResponse(
+                    ok: false,
+                    message:
+                        "Could not save temporary allowance: \(error)",
                     status: status()
                 )
             }
@@ -453,7 +599,7 @@ final class DeadlockDaemon {
 
     private func distractionWebProtectionEnabled(_ now: Date = Date()) -> Bool {
         let settings = effectiveDistractionSettings()
-        let domains = PolicyEngine.normalizedDomains(settings.blockedDomains)
+        let domains = effectiveDistractionDomains(now)
         guard !domains.isEmpty else { return false }
 
         // With no weekly schedule configured, the distraction list behaves
@@ -519,9 +665,7 @@ final class DeadlockDaemon {
             accountabilityReason: store.state.accountabilityReason,
             webProtectionHealthy: {
                 let distractionsEnabled = distractionWebProtectionEnabled(now)
-                let domains = PolicyEngine.normalizedDomains(
-                    effectiveDistractionSettings().blockedDomains
-                )
+                let domains = effectiveDistractionDomains(now)
                 let youtubeBlocked = distractionsEnabled
                     && domains.contains(where: isYouTubeDomain)
                 return webProtection.isHealthy(
@@ -537,7 +681,9 @@ final class DeadlockDaemon {
             distractionBlockActive: distractionWebProtectionEnabled(now),
             distractionScheduledEnd: scheduledDistraction?.end,
             distractionScheduleNextStart: nextDistraction?.start,
-            distractionSettingsEditable: distractionSettingsEditable(now)
+            distractionSettingsEditable: distractionSettingsEditable(now),
+            temporaryAllowedDistractionDomains:
+                activeTemporaryAllowedDistractionDomains(now)
         )
     }
 
@@ -596,6 +742,7 @@ final class DeadlockDaemon {
             if let manual = self.store.state.distractionBlockUntil, now >= manual {
                 try? self.store.mutate { $0.distractionBlockUntil = nil }
             }
+            self.pruneExpiredTemporaryAllowances(now)
 
             self.applyWebProtectionIfNeeded()
             if self.pornProtectionActive(now) || self.distractionWebProtectionEnabled(now) {
@@ -642,6 +789,10 @@ final class DeadlockDaemon {
         if let manual = store.state.distractionBlockUntil, manual > now { dates.append(manual) }
         if let scheduled = scheduledDistractionInterval(now: now) { dates.append(scheduled.end) }
         if let nextDistraction = nextScheduledDistractionInterval(now: now) { dates.append(nextDistraction.start) }
+        for until in activeTemporaryAllowedDistractionDomains(now).values
+        where until > now {
+            dates.append(until)
+        }
         if let settingsEnd = store.state.settingsLockedUntil, settingsEnd > now { dates.append(settingsEnd) }
         if let refresh = nextWebProtectionRefreshAt, refresh > now { dates.append(refresh) }
         if let retry = nextWebProtectionRetryAt, retry > now { dates.append(retry) }
@@ -688,9 +839,8 @@ final class DeadlockDaemon {
             }
 
             let normalizedWord = word.lowercased()
-            let distractionDomains = PolicyEngine.normalizedDomains(
-                self.effectiveDistractionSettings().blockedDomains
-            )
+            let distractionDomains =
+                self.effectiveDistractionDomains()
             let isDistractionMatch = distractionActive && distractionDomains.contains {
                 $0 == normalizedWord
                     || (self.isYouTubeDomain($0) && self.isYouTubeDomain(normalizedWord))
@@ -842,9 +992,7 @@ final class DeadlockDaemon {
         let pornEnabled = pornProtectionActive(now)
         let distractionsEnabled = distractionWebProtectionEnabled(now)
         let protectionsActive = pornEnabled || distractionsEnabled
-        let domains = PolicyEngine.normalizedDomains(
-            effectiveDistractionSettings().blockedDomains
-        )
+        let domains = effectiveDistractionDomains(now)
         let youtubeBlocked = distractionsEnabled
             && domains.contains(where: isYouTubeDomain)
         let fingerprint = [
