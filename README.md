@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.3.2 preview  
+**Status:** v1.3.4 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -108,6 +108,24 @@ root daemon
      └─ managed hosts entries
 ```
 
+## Permissions across local rebuilds
+
+Deadlock is intentionally buildable without a paid Apple developer account. Older builds were ad-hoc signed with the default changing cdhash identity, so macOS could keep an approved Deadlock entry in Privacy & Security while still treating the newly rebuilt binary as a different requester.
+
+Starting with **v1.3.4**, the app and privileged helper are still locally/ad-hoc signed, but each carries a stable designated code requirement. When upgrading from an older build, macOS may ask once more for Accessibility or Automation approval because the identity format is changing. Subsequent local rebuilds keep the same designated requirement, so that approval should no longer be invalidated simply because the executable bytes changed.
+
+You can inspect the installed identity with:
+
+```bash
+codesign -d -r- /Applications/deadlock.app 2>&1
+```
+
+The expected designated requirement contains `local.deadlock.BedtimeLock`.
+
+## App identity
+
+The app icon is an original **midnight guardian** mark generated during the local build: a dark lock, crescent moon and restrained guardian-eye motif. It is intentionally anime-adjacent rather than copied from an existing anime character or franchise, so the repository can be shared without artwork licensing problems.
+
 ## Diagnostics
 
 ```bash
@@ -118,7 +136,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.3.2 because YouTube remains outside DNS blocking so IINA continues to work.
+A publicly resolving `youtube.com` is expected in v1.3.4 because YouTube remains outside DNS blocking so IINA continues to work.
 
 ## Update
 
