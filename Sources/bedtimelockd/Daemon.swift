@@ -45,7 +45,7 @@ final class DeadlockDaemon {
             return self.queue.sync {
                 var config = self.store.state.current
                 let pornActive = self.pornProtectionActive()
-                let distractionActive = self.distractionProtectionActive()
+                let distractionActive = self.distractionWebProtectionEnabled()
                 config.contentFilterEnabled = pornActive || distractionActive
 
                 var terms: [String] = []
@@ -449,6 +449,18 @@ final class DeadlockDaemon {
         return scheduledDistractionInterval(now: now) != nil
     }
 
+    private func distractionWebProtectionEnabled(_ now: Date = Date()) -> Bool {
+        let settings = effectiveDistractionSettings()
+        let domains = PolicyEngine.normalizedDomains(settings.blockedDomains)
+        guard !domains.isEmpty else { return false }
+
+        // With no weekly schedule configured, the distraction list behaves
+        // like a normal always-on blocker. A schedule narrows enforcement to
+        // its active/manual windows.
+        if !settings.scheduleEnabled { return true }
+        return distractionProtectionActive(now)
+    }
+
     private func distractionSettingsEditable(_ now: Date = Date()) -> Bool {
         PolicyEngine.distractionSettingsEditable(
             now: now,
@@ -505,12 +517,12 @@ final class DeadlockDaemon {
             accountabilityReason: store.state.accountabilityReason,
             webProtectionHealthy: webProtection.isHealthy(
                 pornEnabled: pornProtectionActive(now),
-                distractionsEnabled: distractionProtectionActive(now),
+                distractionsEnabled: distractionWebProtectionEnabled(now),
                 distractionDomains: effectiveDistractionSettings().blockedDomains
             ),
             webProtectionLastError: webProtectionLastError,
             distractionBlockUntil: store.state.distractionBlockUntil,
-            distractionBlockActive: distractionProtectionActive(now),
+            distractionBlockActive: distractionWebProtectionEnabled(now),
             distractionScheduledEnd: scheduledDistraction?.end,
             distractionScheduleNextStart: nextDistraction?.start,
             distractionSettingsEditable: distractionSettingsEditable(now)
@@ -574,7 +586,7 @@ final class DeadlockDaemon {
             }
 
             self.applyWebProtectionIfNeeded()
-            if self.pornProtectionActive(now) || self.distractionProtectionActive(now) {
+            if self.pornProtectionActive(now) || self.distractionWebProtectionEnabled(now) {
                 self.contentMonitor?.rescanFrontmost()
             }
 
@@ -621,7 +633,7 @@ final class DeadlockDaemon {
         if let settingsEnd = store.state.settingsLockedUntil, settingsEnd > now { dates.append(settingsEnd) }
         if let refresh = nextWebProtectionRefreshAt, refresh > now { dates.append(refresh) }
         if let retry = nextWebProtectionRetryAt, retry > now { dates.append(retry) }
-        if (pornProtectionActive(now) || distractionProtectionActive(now)),
+        if (pornProtectionActive(now) || distractionWebProtectionEnabled(now)),
            let health = nextWebProtectionHealthCheckAt,
            health > now {
             dates.append(health)
@@ -648,7 +660,7 @@ final class DeadlockDaemon {
     private func terminateMatchedApplication(pid: pid_t, word: String) {
         queue.async {
             let pornActive = self.pornProtectionActive()
-            let distractionActive = self.distractionProtectionActive()
+            let distractionActive = self.distractionWebProtectionEnabled()
             guard pornActive || distractionActive else { return }
             guard pid > 1, pid != getpid() else { return }
 
@@ -772,7 +784,7 @@ final class DeadlockDaemon {
     private func applyWebProtectionIfNeeded(force: Bool = false) {
         let now = Date()
         let pornEnabled = pornProtectionActive(now)
-        let distractionsEnabled = distractionProtectionActive(now)
+        let distractionsEnabled = distractionWebProtectionEnabled(now)
         let protectionsActive = pornEnabled || distractionsEnabled
         let domains = PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
