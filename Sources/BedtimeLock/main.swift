@@ -25,8 +25,35 @@ final class AppState: ObservableObject {
     private var settingsWindow: NSWindow?
     private var accountabilityAttemptedEvent: Date?
 
+    private lazy var browserYouTubeGuard = BrowserYouTubeGuard(
+        shouldBlock: { [weak self] in
+            guard let self else { return false }
+            let configured = self.distractionSettings.blockedDomains.contains { value in
+                let host = value
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                return host == "youtube.com"
+                    || host.hasSuffix(".youtube.com")
+                    || host == "youtu.be"
+                    || host.hasSuffix(".youtu.be")
+                    || host == "youtube-nocookie.com"
+                    || host.hasSuffix(".youtube-nocookie.com")
+            }
+            guard configured else { return false }
+
+            // No weekly schedule means the user's distraction list is an
+            // always-on block. Otherwise, follow the daemon's active status.
+            return !self.distractionSettings.scheduleEnabled
+                || self.status.distractionBlockActive
+        },
+        onDiagnostic: { [weak self] diagnostic in
+            self?.message = diagnostic
+        }
+    )
+
     init() {
         scheduleRefresh()
+        browserYouTubeGuard.start()
 
         // Do not block creation of the menu-bar item if the root daemon is
         // still starting. IPC has a timeout, but the UI should appear instantly.
