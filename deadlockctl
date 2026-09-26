@@ -71,8 +71,13 @@ web() {
     echo "No Firefox policy file at: $FIREFOX_POLICY"
   fi
   echo
+  echo "== Safari browser-only enforcement =="
+  echo "Safari uses Deadlock's logged-in helper. It tries Safari Automation first,"
+  echo "then Accessibility as a fallback to close only the active YouTube tab."
+  echo "If prompted, enable deadlock in Privacy & Security → Accessibility."
+  echo
   echo "YouTube resolving publicly is expected: Chrome, Helium and Firefox block it with"
-  echo "browser-native policy while IINA and other non-browser clients keep DNS access."
+  echo "browser-native policy; Safari uses the user-session guard. IINA keeps DNS access."
   echo "Verify in Chrome at chrome://policy → URLBlocklist."
   echo "Verify in Helium at helium://policy → URLBlocklist."
   echo "Verify in Firefox at about:policies → Active → WebsiteFilter."
