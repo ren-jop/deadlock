@@ -211,6 +211,10 @@ public struct PersistedState: Codable, Hashable, Sendable {
     public var distractionBlockUntil: Date?
     public var distractionSettings: DistractionSettings?
 
+    /// Time-bounded exceptions to the distraction list. Missing/expired values
+    /// are ignored by the daemon and pruned automatically.
+    public var temporaryAllowedDistractionDomains: [String: Date]?
+
     public init(
         current: LockConfig = .defaultConfig,
         pending: PendingConfig? = nil,
@@ -224,7 +228,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
         accountabilityReason: String? = nil,
         lastAccountabilityTriggeredAt: Date? = nil,
         distractionBlockUntil: Date? = nil,
-        distractionSettings: DistractionSettings? = nil
+        distractionSettings: DistractionSettings? = nil,
+        temporaryAllowedDistractionDomains: [String: Date]? = nil
     ) {
         self.current = current
         self.pending = pending
@@ -239,6 +244,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.lastAccountabilityTriggeredAt = lastAccountabilityTriggeredAt
         self.distractionBlockUntil = distractionBlockUntil
         self.distractionSettings = distractionSettings
+        self.temporaryAllowedDistractionDomains =
+            temporaryAllowedDistractionDomains
     }
 }
 
@@ -284,6 +291,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
     public var distractionScheduledEnd: Date?
     public var distractionScheduleNextStart: Date?
     public var distractionSettingsEditable: Bool
+    public var temporaryAllowedDistractionDomains: [String: Date]?
 
     public init(
         daemonRunning: Bool = true,
@@ -312,7 +320,8 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         distractionBlockActive: Bool = false,
         distractionScheduledEnd: Date? = nil,
         distractionScheduleNextStart: Date? = nil,
-        distractionSettingsEditable: Bool = true
+        distractionSettingsEditable: Bool = true,
+        temporaryAllowedDistractionDomains: [String: Date]? = nil
     ) {
         self.daemonRunning = daemonRunning
         self.active = active
@@ -341,6 +350,8 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         self.distractionScheduledEnd = distractionScheduledEnd
         self.distractionScheduleNextStart = distractionScheduleNextStart
         self.distractionSettingsEditable = distractionSettingsEditable
+        self.temporaryAllowedDistractionDomains =
+            temporaryAllowedDistractionDomains
     }
 }
 
@@ -351,6 +362,7 @@ public enum IPCCommand: String, Codable, Sendable {
     case startTest
     case startPornBlocker
     case startDistractionBlock
+    case allowDistractionDomainUntil
     case setPornSettings
     case setDistractionSettings
     case lockSettings
