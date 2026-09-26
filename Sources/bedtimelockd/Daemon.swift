@@ -44,8 +44,20 @@ final class DeadlockDaemon {
             guard let self else { return .defaultConfig }
             return self.queue.sync {
                 var config = self.store.state.current
-                config.contentFilterEnabled = self.pornProtectionActive()
-                config.blockedWords = LockConfig.defaultBlockedWords
+                let pornActive = self.pornProtectionActive()
+                let distractionActive = self.distractionProtectionActive()
+                config.contentFilterEnabled = pornActive || distractionActive
+
+                var terms: [String] = []
+                if pornActive {
+                    terms.append(contentsOf: LockConfig.defaultBlockedWords)
+                }
+                if distractionActive {
+                    terms.append(contentsOf: PolicyEngine.normalizedDomains(
+                        self.effectiveDistractionSettings().blockedDomains
+                    ))
+                }
+                config.blockedWords = Array(Set(terms)).sorted()
                 return config
             }
         }, onMatch: { [weak self] pid, word in
@@ -561,10 +573,8 @@ final class DeadlockDaemon {
                 try? self.store.mutate { $0.distractionBlockUntil = nil }
             }
 
-            let wasPornActive = self.pornProtectionActive(now)
             self.applyWebProtectionIfNeeded()
-            let isPornActive = self.pornProtectionActive(now)
-            if wasPornActive != isPornActive {
+            if self.pornProtectionActive(now) || self.distractionProtectionActive(now) {
                 self.contentMonitor?.rescanFrontmost()
             }
 
@@ -637,17 +647,57 @@ final class DeadlockDaemon {
 
     private func terminateMatchedApplication(pid: pid_t, word: String) {
         queue.async {
-            guard self.pornProtectionActive() else { return }
+            let pornActive = self.pornProtectionActive()
+            let distractionActive = self.distractionProtectionActive()
+            guard pornActive || distractionActive else { return }
             guard pid > 1, pid != getpid() else { return }
-            if let app = NSRunningApplication(processIdentifier: pid),
-               let bundle = app.bundleIdentifier,
-               ["local.deadlock.BedtimeLock", "com.apple.loginwindow", "com.apple.WindowServer", "com.apple.MobileSMS"].contains(bundle) {
+
+            let app = NSRunningApplication(processIdentifier: pid)
+            if let bundle = app?.bundleIdentifier,
+               [
+                    "local.deadlock.BedtimeLock",
+                    "com.apple.loginwindow",
+                    "com.apple.WindowServer",
+                    "com.apple.MobileSMS"
+               ].contains(bundle) {
                 return
             }
 
+            let normalizedWord = word.lowercased()
+            let distractionDomains = PolicyEngine.normalizedDomains(
+                self.effectiveDistractionSettings().blockedDomains
+            )
+            let isDistractionMatch = distractionActive && distractionDomains.contains {
+                $0 == normalizedWord
+                    || (self.isYouTubeDomain($0) && self.isYouTubeDomain(normalizedWord))
+            }
+
+            if isDistractionMatch {
+                let allowedTarget = self.isSupportedBrowser(app?.bundleIdentifier)
+                    || (self.isYouTubeDomain(normalizedWord)
+                        && self.isOfficialYouTubeApp(app))
+                guard allowedTarget else { return }
+
+                _ = Darwin.kill(pid, SIGTERM)
+                self.queue.asyncAfter(deadline: .now() + 1) {
+                    if Darwin.kill(pid, 0) == 0 {
+                        _ = Darwin.kill(pid, SIGKILL)
+                    }
+                }
+                notifyConsole(
+                    title: "deadlock",
+                    body: self.isYouTubeDomain(normalizedWord)
+                        ? "Blocked YouTube in the browser/app. IINA remains available."
+                        : "Closed a browser showing a blocked distraction site."
+                )
+                return
+            }
+
+            guard pornActive else { return }
             let settings = self.effectivePornSettings()
             let wantsOverlay = settings.motivationalOverlayEnabled
-            let wantsMessage = settings.accountabilityEnabled && !settings.accountabilityRecipient.isEmpty
+            let wantsMessage = settings.accountabilityEnabled
+                && !settings.accountabilityRecipient.isEmpty
             let now = Date()
             let mayTrigger = PolicyEngine.accountabilityMayTrigger(
                 now: now,
@@ -659,17 +709,64 @@ final class DeadlockDaemon {
                     state.accountabilityTriggeredAt = now
                     state.accountabilityReason = word
                 }
-                // Launches the menu-bar app in the console session. The GUI sends the iMessage
-                // so macOS can attribute/ask for the Messages Automation permission correctly.
                 launchGUIForCountdown()
             }
 
             _ = Darwin.kill(pid, SIGTERM)
             self.queue.asyncAfter(deadline: .now() + 2) {
-                if Darwin.kill(pid, 0) == 0 { _ = Darwin.kill(pid, SIGKILL) }
+                if Darwin.kill(pid, 0) == 0 {
+                    _ = Darwin.kill(pid, SIGKILL)
+                }
             }
-            notifyConsole(title: "deadlock", body: "Blocked adult content and closed the app.")
+            notifyConsole(
+                title: "deadlock",
+                body: "Blocked adult content and closed the app."
+            )
         }
+    }
+
+    private func isYouTubeDomain(_ value: String) -> Bool {
+        let host = value.lowercased()
+        return host == "youtube.com"
+            || host.hasSuffix(".youtube.com")
+            || host == "youtu.be"
+            || host.hasSuffix(".youtu.be")
+            || host == "youtube-nocookie.com"
+            || host.hasSuffix(".youtube-nocookie.com")
+    }
+
+    private func isOfficialYouTubeApp(_ app: NSRunningApplication?) -> Bool {
+        guard let app else { return false }
+        let bundle = (app.bundleIdentifier ?? "").lowercased()
+        if bundle.contains("iina") { return false }
+        if bundle == "com.google.ios.youtube" || bundle == "com.google.youtube" {
+            return true
+        }
+        return app.localizedName?.lowercased() == "youtube"
+            && (bundle.contains("safari")
+                || bundle.contains("chrome")
+                || bundle.contains("google"))
+    }
+
+    private func isSupportedBrowser(_ bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        let exact: Set<String> = [
+            "com.apple.Safari",
+            "com.google.Chrome",
+            "org.mozilla.firefox",
+            "company.thebrowser.Browser",
+            "com.brave.Browser",
+            "com.microsoft.edgemac",
+            "com.kagi.kagimacOS",
+            "com.vivaldi.Vivaldi",
+            "com.operasoftware.Opera"
+        ]
+        if exact.contains(bundleIdentifier) { return true }
+        let value = bundleIdentifier.lowercased()
+        return value.contains("browser")
+            || value.contains("chrome")
+            || value.contains("firefox")
+            || value.contains("safari")
     }
 
     private func applyWebProtectionIfNeeded(force: Bool = false) {
