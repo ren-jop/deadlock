@@ -58,6 +58,28 @@ Explicitly recognized families include Safari / Safari Technology Preview, Chrom
 
 For browser forks that do not expose a compatible scripting API, Deadlock checks the active window title and accessible address-bar controls for YouTube, then sends Command-W only to the frontmost browser tab. This keeps the network path available to IINA.
 
+### Browser compatibility
+
+Deadlock's browser-only YouTube exception is designed around browser families rather than a tiny fixed list.
+
+Known coverage includes:
+
+- Safari and Safari Technology Preview
+- Google Chrome family, Chromium, Brave, Edge, Vivaldi
+- Opera and Opera GX
+- Arc and Dia
+- Helium, Sidekick, Yandex Browser, SigmaOS
+- Firefox family, including Developer Edition and Nightly
+- Zen, LibreWolf, Waterfox, Floorp
+- DuckDuckGo Browser, Orion and Min
+- Tor Browser and Mullvad Browser
+- Wavebox and Ghost Browser by browser identity
+- Other macOS apps whose bundle/name clearly identifies them as a browser use the generic Accessibility fallback
+
+Native browser policy is preferred when supported. Otherwise Deadlock uses AppleScript where available, then macOS Accessibility to inspect the active window/address field and issue Command-W only when the active tab is YouTube. IINA is explicitly excluded.
+
+Because third-party browsers can change their macOS identifiers or Accessibility trees between releases, no app can truthfully guarantee every browser forever; the generic fallback is there so most new forks continue working without a Deadlock update.
+
 ## Distraction presets
 
 The Distractions panel includes grouped quick presets for common distracting sites:
