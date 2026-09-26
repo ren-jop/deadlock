@@ -8,7 +8,7 @@
 <key>CFBundleName</key><string>deadlock</string><key>CFBundleDisplayName</key><string>deadlock</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>deadlock.icns</string>
-<key>CFBundleShortVersionString</key><string>1.3.4</string><key>CFBundleVersion</key><string>18</string>
+<key>CFBundleShortVersionString</key><string>1.3.5</string><key>CFBundleVersion</key><string>19</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string><key>LSUIElement</key><true/><key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>deadlock uses Automation to close blocked browser tabs and, when configured, send an accountability iMessage.</string>
 <key>LSMultipleInstancesProhibited</key><true/>
