@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.3.0 preview  
+**Status:** v1.3.1 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -40,13 +40,23 @@ When `youtube.com` is in the distraction list:
 - Helium receives the same Chromium-native `URLBlocklist` under its `net.imput.helium` managed-preferences domain.
 - Firefox receives Mozilla's native macOS `WebsiteFilter` policy with YouTube match patterns.
 - Safari uses a user-session guard: Apple Events first, then an Accessibility fallback that closes only the active YouTube tab.
-- Chrome, Helium and Firefox reject those sites through browser policy, while Safari stays isolated from IINA through the user-session guard.
-- The logged-in helper remains as a fallback for other supported browsers.
+- Opera GX, Opera, Brave, Edge, Vivaldi, Arc, Dia, Chromium, Chrome variants, Sidekick, Yandex, SigmaOS and similar Chromium browsers use Chromium scripting when available, then Accessibility if needed.
+- Zen, Firefox Developer Edition/Nightly, LibreWolf, Waterfox, Floorp, DuckDuckGo, Orion, Min and other recognized browsers use the generic Accessibility path.
+- Unknown future browsers whose app identity clearly identifies them as a browser also get the Accessibility fallback.
+- IINA is always excluded from browser enforcement.
 - The official YouTube app / installed YouTube web apps are blocked.
 - YouTube is **not** written into Deadlock's DNS / `/etc/hosts` block.
 - IINA is explicitly left alone.
 
-This keeps normal YouTube DNS resolution available for IINA-based playback while browsers refuse website navigation. Chrome exposes the applied rule at `chrome://policy`; Helium at `helium://policy`; Firefox at `about:policies`. Safari may require one-time Accessibility permission for Deadlock when Apple Events access is unavailable.
+This keeps normal YouTube DNS resolution available for IINA-based playback while browsers refuse website navigation. Chrome exposes the applied rule at `chrome://policy`; Helium at `helium://policy`; Firefox at `about:policies`. Browsers that do not expose a usable native policy or AppleScript tab API use one-time macOS Accessibility permission instead.
+
+## Browser compatibility
+
+Deadlock no longer relies on one hard-coded browser path. The logged-in helper uses a browser catalog plus a generic Accessibility fallback.
+
+Explicitly recognized families include Safari / Safari Technology Preview, Chrome and Chrome variants, Chromium, Brave, Edge variants, Arc, Dia, Vivaldi, Opera, Opera GX, Helium, Firefox and Firefox variants, Zen, LibreWolf, Waterfox, Floorp, DuckDuckGo, Orion, Sidekick, Yandex Browser, SigmaOS, Thorium, Wavebox, Ghost Browser and Min.
+
+For browser forks that do not expose a compatible scripting API, Deadlock checks the active window title and accessible address-bar controls for YouTube, then sends Command-W only to the frontmost browser tab. This keeps the network path available to IINA.
 
 ## Distraction presets
 
@@ -86,7 +96,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.3.0 because YouTube remains outside DNS blocking so IINA continues to work.
+A publicly resolving `youtube.com` is expected in v1.3.1 because YouTube remains outside DNS blocking so IINA continues to work.
 
 ## Update
 
