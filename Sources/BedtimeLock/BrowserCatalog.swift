@@ -1,6 +1,6 @@
 import AppKit
 
-enum BrowserInteractionMode {
+enum BrowserInteractionMode: Equatable {
     case safari
     case chromium
     case accessibility
