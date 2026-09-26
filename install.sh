@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-PREFIX="$ROOT/source/deadlock-v1.2.2.zip.b64.part-"
-PATCH_DIR="$ROOT/source/patches"
+UID_NOW="$(id -u)"
+AGENT_PLIST="$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"
+SUPPORT="/Library/Application Support/deadlock"
+RECOVERY="/var/db/deadlock"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
@@ -12,39 +14,65 @@ fail() { echo "error: $*" >&2; exit 1; }
 [[ "$(id -u)" -ne 0 ]] || fail "Run ./install.sh as your normal user; it will request sudo when needed."
 command -v xcrun >/dev/null 2>&1 || fail "Install Apple's Command Line Tools first: xcode-select --install"
 xcrun --find swift >/dev/null 2>&1 || fail "Swift was not found. Install Apple's Command Line Tools: xcode-select --install"
-command -v patch >/dev/null 2>&1 || fail "The system patch utility is required."
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/deadlock-install.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+cd "$ROOT"
 
-shopt -s nullglob
-PARTS=("${PREFIX}"*)
-PATCHES=("$PATCH_DIR"/*.patch)
-(( ${#PARTS[@]} > 0 )) || fail "Bundled source snapshot is missing."
-(( ${#PATCHES[@]} > 0 )) || fail "Patch set is missing."
+echo "== Deadlock v1.2.6 preview =="
+echo "Building the current repository source..."
+./build.sh
 
-echo "== Deadlock v1.2.5 preview =="
-echo "Validating source snapshot..."
-cat "${PARTS[@]}" > "$WORK/deadlock.zip.b64"
-/usr/bin/base64 -D < "$WORK/deadlock.zip.b64" > "$WORK/deadlock.zip"
-/usr/bin/unzip -tq "$WORK/deadlock.zip" >/dev/null || fail "Bundled source snapshot failed its integrity check."
-/usr/bin/ditto -x -k "$WORK/deadlock.zip" "$WORK"
+[[ -d "$ROOT/dist/deadlock.app" ]] || fail "Build did not produce dist/deadlock.app."
+[[ -x "$ROOT/dist/bedtimelockd" ]] || fail "Build did not produce dist/bedtimelockd."
 
-SRC="$WORK/deadlock"
-[[ -f "$SRC/Package.swift" ]] || fail "Bundled source snapshot is invalid."
+echo "Stopping the previous installation..."
+launchctl bootout "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || true
+sudo launchctl bootout system/com.deadlock.watchdog 2>/dev/null || true
+sudo launchctl bootout system/com.deadlock.daemon 2>/dev/null || true
 
-echo "Applying reviewed patches..."
-for patch_file in "${PATCHES[@]}"; do
-  /usr/bin/patch --batch --forward -p1 -d "$SRC" < "$patch_file" >/dev/null || fail "Could not apply $(basename "$patch_file")."
-done
+echo "Installing app and privileged components..."
+sudo mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons "$SUPPORT" "$RECOVERY"
+mkdir -p "$HOME/Library/LaunchAgents"
 
-chmod +x "$SRC/build.sh" "$SRC/install.sh" "$SRC/deadlockctl" "$SRC/maintenance-unlock.sh"
+sudo rm -rf /Applications/deadlock.app
+sudo /usr/bin/ditto "$ROOT/dist/deadlock.app" /Applications/deadlock.app
+sudo install -m 755 "$ROOT/dist/bedtimelockd" /Library/PrivilegedHelperTools/bedtimelockd
 
-echo "Building and installing..."
-cd "$SRC"
-./install.sh
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.daemon.plist"   /Library/LaunchDaemons/com.deadlock.daemon.plist
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.watchdog.plist"   /Library/LaunchDaemons/com.deadlock.watchdog.plist
+install -m 644 "$ROOT/LaunchAgents/com.deadlock.menubar.plist" "$AGENT_PLIST"
+
+# Keep last-known-good copies for the watchdog/recovery path without touching
+# the signed policy/state files that may already exist in Application Support.
+sudo install -m 755 "$ROOT/dist/bedtimelockd" "$RECOVERY/bedtimelockd.backup"
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.daemon.plist"   "$SUPPORT/com.deadlock.daemon.plist"
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.watchdog.plist"   "$SUPPORT/com.deadlock.watchdog.plist"
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.daemon.plist"   "$RECOVERY/com.deadlock.daemon.plist"
+sudo install -m 644   "$ROOT/LaunchDaemons/com.deadlock.watchdog.plist"   "$RECOVERY/com.deadlock.watchdog.plist"
+
+sudo chown root:wheel /Library/PrivilegedHelperTools/bedtimelockd
+sudo chown root:wheel   /Library/LaunchDaemons/com.deadlock.daemon.plist   /Library/LaunchDaemons/com.deadlock.watchdog.plist
+sudo chown -R root:wheel "$SUPPORT" "$RECOVERY"
+sudo chmod 700 "$SUPPORT" "$RECOVERY"
+
+echo "Starting enforcement..."
+sudo launchctl enable system/com.deadlock.daemon 2>/dev/null || true
+sudo launchctl enable system/com.deadlock.watchdog 2>/dev/null || true
+launchctl enable "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || true
+
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.deadlock.daemon.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.deadlock.watchdog.plist
+launchctl bootstrap "gui/$UID_NOW" "$AGENT_PLIST"
+
+sudo launchctl kickstart -k system/com.deadlock.daemon
+sudo launchctl kickstart -k system/com.deadlock.watchdog
+launchctl kickstart -k "gui/$UID_NOW/com.deadlock.menubar"
+
+sleep 1
+sudo launchctl print system/com.deadlock.daemon >/dev/null   || fail "The privileged daemon did not start."
+launchctl print "gui/$UID_NOW/com.deadlock.menubar" >/dev/null   || fail "The menu-bar helper did not start."
 
 echo
-echo "Deadlock v1.2.5 installed."
-echo "Temporary settings unlock: bash $ROOT/maintenance-unlock.sh"
-echo "Website diagnostics:        bash $ROOT/deadlockctl web"
+echo "Deadlock v1.2.6 installed from the current source tree."
+echo "If macOS asks for Automation access when a blocked YouTube tab is opened, allow deadlock to control that browser."
+echo "IINA is not automated or DNS-blocked."
+echo "Diagnostics: bash $ROOT/deadlockctl web"
