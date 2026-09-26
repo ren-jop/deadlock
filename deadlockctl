@@ -90,15 +90,6 @@ web() {
   echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
 }
 
-allow_today() {
-  local domain="${1:-}"
-  if [[ -z "$domain" ]]; then
-    echo "Usage: ./deadlockctl allow-today <domain>" >&2
-    exit 2
-  fi
-  "$APP/Contents/MacOS/deadlock" --ipc distraction-allow-today "$domain"
-}
-
 doctor() {
   echo "=== deadlock doctor ==="
   for path in     "$APP"     /Library/PrivilegedHelperTools/bedtimelockd     /Library/LaunchDaemons/com.deadlock.daemon.plist     /Library/LaunchDaemons/com.deadlock.watchdog.plist     "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"     /var/run/deadlock.sock
@@ -141,7 +132,6 @@ case "${1:-}" in
   perf) perf ;;
   web) web ;;
   doctor) doctor ;;
-  allow-today) allow_today "${2:-}" ;;
-  allow-discord-today) allow_today "discord.com" ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|allow-today <domain>|allow-discord-today}"; exit 1 ;;
+  discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
+  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"; exit 1 ;;
 esac
