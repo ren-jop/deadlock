@@ -55,9 +55,18 @@ web() {
     echo "No Chrome managed policy file at: $POLICY"
   fi
   echo
-  echo "YouTube resolving publicly is expected: Chrome blocks it with URLBlocklist"
-  echo "while IINA and other non-browser clients keep normal DNS access."
+  echo "== Firefox enterprise policy =="
+  FIREFOX_POLICY="/Library/Preferences/org.mozilla.firefox.plist"
+  if [[ -f "$FIREFOX_POLICY" ]]; then
+    plutil -p "$FIREFOX_POLICY" 2>/dev/null | grep -E -A14 'EnterprisePoliciesEnabled|WebsiteFilter__Block' || plutil -p "$FIREFOX_POLICY" 2>/dev/null || true
+  else
+    echo "No Firefox policy file at: $FIREFOX_POLICY"
+  fi
+  echo
+  echo "YouTube resolving publicly is expected: Chrome and Firefox block it with"
+  echo "browser-native policy while IINA and other non-browser clients keep DNS access."
   echo "Verify in Chrome at chrome://policy → URLBlocklist."
+  echo "Verify in Firefox at about:policies → Active → WebsiteFilter."
   echo
   echo "For other configured domains that unexpectedly resolve publicly, flush caches with:"
   echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
