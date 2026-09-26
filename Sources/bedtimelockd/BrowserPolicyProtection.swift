@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import DeadlockShared
 
 /// Enforces browser-only YouTube blocking without touching DNS.
 ///
