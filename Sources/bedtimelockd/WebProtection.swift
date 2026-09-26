@@ -69,6 +69,11 @@ final class WebProtection {
         forceRefresh: Bool = false,
         now: Date = Date()
     ) throws -> Date? {
+        let normalizedDistractions = distractionsEnabled
+            ? PolicyEngine.normalizedDomains(distractionDomains)
+            : []
+        let youtubeBrowserOnly = normalizedDistractions.contains(where: isBrowserOnlyDomain)
+
         let original = try String(contentsOfFile: hostsPath, encoding: .utf8)
         var unmanaged = stripSection(original, begin: adultBegin, end: adultEnd)
         unmanaged = stripSection(unmanaged, begin: distractionBegin, end: distractionEnd)
@@ -90,7 +95,7 @@ final class WebProtection {
                 state = oldState
             } else {
                 state = ManagedState(
-                    adultBlock: buildAdultBlock(),
+                    adultBlock: buildAdultBlock(skipYouTubeSafeMapping: youtubeBrowserOnly),
                     lastResolvedAt: now
                 )
             }
@@ -101,11 +106,8 @@ final class WebProtection {
             try? FileManager.default.removeItem(atPath: DeadlockPaths.webProtectionState)
         }
 
-        if distractionsEnabled {
-            let normalized = PolicyEngine.normalizedDomains(distractionDomains)
-            if !normalized.isEmpty {
-                blocks.append(buildDistractionBlock(normalized))
-            }
+        if !normalizedDistractions.isEmpty {
+            blocks.append(buildDistractionBlock(normalizedDistractions))
         }
 
         let desired = appendBlocks(blocks, to: unmanaged)
@@ -126,9 +128,17 @@ final class WebProtection {
             return false
         }
 
+        let normalizedDistractions = distractionsEnabled
+            ? PolicyEngine.normalizedDomains(distractionDomains)
+            : []
+        let youtubeBrowserOnly = normalizedDistractions.contains(where: isBrowserOnlyDomain)
+
         let adultSection = section(in: current, begin: adultBegin, end: adultEnd)
         if pornEnabled {
-            guard let saved = loadState(), adultSection == saved.adultBlock else {
+            guard let saved = loadState(),
+                  adultSection == saved.adultBlock,
+                  saved.adultBlock == buildAdultBlock(skipYouTubeSafeMapping: youtubeBrowserOnly)
+            else {
                 return false
             }
         } else if adultSection != nil {
@@ -141,8 +151,9 @@ final class WebProtection {
             end: distractionEnd
         )
         if distractionsEnabled {
-            let normalized = PolicyEngine.normalizedDomains(distractionDomains)
-            let expected = normalized.isEmpty ? nil : buildDistractionBlock(normalized)
+            let expected = normalizedDistractions.isEmpty
+                ? nil
+                : buildDistractionBlock(normalizedDistractions)
             if distractionSection != expected { return false }
         } else if distractionSection != nil {
             return false
@@ -151,7 +162,7 @@ final class WebProtection {
         return true
     }
 
-    private func buildAdultBlock() -> String {
+    private func buildAdultBlock(skipYouTubeSafeMapping: Bool = false) -> String {
         var lines = [adultBegin]
 
         for domain in adultDomains {
@@ -178,14 +189,16 @@ final class WebProtection {
             aliases: ["ecosia.org", "www.ecosia.org"],
             lines: &lines
         )
-        addSafeMapping(
-            target: "restrictmoderate.youtube.com",
-            aliases: [
-                "youtube.com", "www.youtube.com", "m.youtube.com",
-                "youtube-nocookie.com", "www.youtube-nocookie.com"
-            ],
-            lines: &lines
-        )
+        if !skipYouTubeSafeMapping {
+            addSafeMapping(
+                target: "restrictmoderate.youtube.com",
+                aliases: [
+                    "youtube.com", "www.youtube.com", "m.youtube.com",
+                    "youtube-nocookie.com", "www.youtube-nocookie.com"
+                ],
+                lines: &lines
+            )
+        }
 
         lines.append(adultEnd)
         return lines.joined(separator: "\n")
