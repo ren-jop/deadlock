@@ -99,22 +99,15 @@ final class DeadlockDaemon {
         store.state.distractionSettings ?? .defaultSettings
     }
 
-    private func activeTemporaryAllowedDistractionDomains(
+    private func discordOneOffIsActive(
         _ now: Date = Date()
-    ) -> [String: Date] {
-        (store.state.temporaryAllowedDistractionDomains ?? [:])
-            .filter { _, until in
-                until > now
-            }
-    }
-
-    private func distractionDomain(
-        _ blocked: String,
-        matches allowance: String
     ) -> Bool {
-        blocked == allowance
-            || blocked.hasSuffix("." + allowance)
-            || allowance.hasSuffix("." + blocked)
+        guard store.state.discordOneOffUsed == true,
+              let until = store.state.discordOneOffAllowedUntil
+        else {
+            return false
+        }
+        return until > now
     }
 
     private func effectiveDistractionDomains(
@@ -123,41 +116,12 @@ final class DeadlockDaemon {
         let configured = PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
         )
-        let allowances =
-            activeTemporaryAllowedDistractionDomains(now)
-                .keys
-
-        guard !allowances.isEmpty else {
+        guard discordOneOffIsActive(now) else {
             return configured
         }
-
         return configured.filter { blocked in
-            !allowances.contains { allowance in
-                distractionDomain(
-                    blocked,
-                    matches: allowance
-                )
-            }
-        }
-    }
-
-    private func pruneExpiredTemporaryAllowances(
-        _ now: Date = Date()
-    ) {
-        let existing =
-            store.state.temporaryAllowedDistractionDomains
-            ?? [:]
-        let active = existing.filter { _, until in
-            until > now
-        }
-
-        guard active.count != existing.count else {
-            return
-        }
-
-        try? store.mutate { state in
-            state.temporaryAllowedDistractionDomains =
-                active.isEmpty ? nil : active
+            blocked != "discord.com"
+                && !blocked.hasSuffix(".discord.com")
         }
     }
 
@@ -292,26 +256,43 @@ final class DeadlockDaemon {
                 )
             }
 
-        case .allowDistractionDomainUntil:
+        case .allowDiscordOneOff:
             let now = Date()
-            guard let rawDomain = req.text,
-                  let domain = PolicyEngine.normalizedDomains(
-                    [rawDomain]
-                  ).first
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = .current
+            let parts = calendar.dateComponents(
+                [.year, .month, .day],
+                from: now
+            )
+
+            guard parts.year == 2026,
+                  parts.month == 9,
+                  parts.day == 26
             else {
                 return IPCResponse(
                     ok: false,
-                    message: "Missing or invalid distraction domain.",
+                    message: "This one-off Discord exception was only valid on 26 Sep 2026.",
                     status: status()
                 )
             }
 
-            guard let requestedUntil = req.date,
-                  requestedUntil > now
-            else {
+            guard store.state.discordOneOffUsed != true else {
                 return IPCResponse(
                     ok: false,
-                    message: "Temporary allowance needs a future end date.",
+                    message: "The one-off Discord exception has already been used.",
+                    status: status()
+                )
+            }
+
+            let startOfDay = calendar.startOfDay(for: now)
+            guard let until = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: startOfDay
+            ) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Could not calculate local midnight.",
                     status: status()
                 )
             }
@@ -320,57 +301,32 @@ final class DeadlockDaemon {
                 effectiveDistractionSettings().blockedDomains
             )
             guard configured.contains(where: {
-                distractionDomain(
-                    $0,
-                    matches: domain
-                )
+                $0 == "discord.com"
+                    || $0.hasSuffix(".discord.com")
             }) else {
                 return IPCResponse(
                     ok: false,
-                    message: "\(domain) is not in the distraction block list.",
+                    message: "Discord is not currently in the distraction block list.",
                     status: status()
                 )
             }
 
-            // Keep this deliberately temporary. 36 hours covers a local
-            // midnight allowance even across a daylight-saving transition.
-            let maximumUntil =
-                now.addingTimeInterval(
-                    36 * 60 * 60
-                )
-            let until = min(
-                requestedUntil,
-                maximumUntil
-            )
-
             do {
                 try store.mutate { state in
-                    var allowances =
-                        state
-                        .temporaryAllowedDistractionDomains
-                        ?? [:]
-                    allowances[domain] = until
-                    state
-                        .temporaryAllowedDistractionDomains =
-                        allowances
+                    state.discordOneOffAllowedUntil = until
+                    state.discordOneOffUsed = true
                 }
-                applyWebProtectionIfNeeded(
-                    force: true
-                )
+                applyWebProtectionIfNeeded(force: true)
                 reschedule()
                 return IPCResponse(
                     ok: true,
-                    message:
-                        "\(domain) allowed until "
-                        + ISO8601DateFormatter()
-                            .string(from: until),
+                    message: "Discord is allowed until local midnight. This exception cannot be used again.",
                     status: status()
                 )
             } catch {
                 return IPCResponse(
                     ok: false,
-                    message:
-                        "Could not save temporary allowance: \(error)",
+                    message: "Could not save the one-off Discord exception: \(error)",
                     status: status()
                 )
             }
@@ -682,8 +638,10 @@ final class DeadlockDaemon {
             distractionScheduledEnd: scheduledDistraction?.end,
             distractionScheduleNextStart: nextDistraction?.start,
             distractionSettingsEditable: distractionSettingsEditable(now),
-            temporaryAllowedDistractionDomains:
-                activeTemporaryAllowedDistractionDomains(now)
+            discordOneOffAllowedUntil:
+                discordOneOffIsActive(now)
+                    ? store.state.discordOneOffAllowedUntil
+                    : nil
         )
     }
 
@@ -742,8 +700,6 @@ final class DeadlockDaemon {
             if let manual = self.store.state.distractionBlockUntil, now >= manual {
                 try? self.store.mutate { $0.distractionBlockUntil = nil }
             }
-            self.pruneExpiredTemporaryAllowances(now)
-
             self.applyWebProtectionIfNeeded()
             if self.pornProtectionActive(now) || self.distractionWebProtectionEnabled(now) {
                 self.contentMonitor?.rescanFrontmost()
@@ -789,8 +745,8 @@ final class DeadlockDaemon {
         if let manual = store.state.distractionBlockUntil, manual > now { dates.append(manual) }
         if let scheduled = scheduledDistractionInterval(now: now) { dates.append(scheduled.end) }
         if let nextDistraction = nextScheduledDistractionInterval(now: now) { dates.append(nextDistraction.start) }
-        for until in activeTemporaryAllowedDistractionDomains(now).values
-        where until > now {
+        if let until = store.state.discordOneOffAllowedUntil,
+           until > now {
             dates.append(until)
         }
         if let settingsEnd = store.state.settingsLockedUntil, settingsEnd > now { dates.append(settingsEnd) }
