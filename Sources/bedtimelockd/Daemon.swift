@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 import Darwin
 import DeadlockShared
 
@@ -685,11 +686,23 @@ final class DeadlockDaemon {
             }
 
             if isDistractionMatch {
-                let allowedTarget = self.isSupportedBrowser(app?.bundleIdentifier)
-                    || (self.isYouTubeDomain(normalizedWord)
-                        && self.isOfficialYouTubeApp(app))
-                guard allowedTarget else { return }
+                let isBrowser = self.isSupportedBrowser(app?.bundleIdentifier)
+                let isYouTubeApp = self.isYouTubeDomain(normalizedWord)
+                    && self.isOfficialYouTubeApp(app)
+                guard isBrowser || isYouTubeApp else { return }
 
+                if isBrowser, self.closeFocusedBrowserWindow(pid: pid) {
+                    notifyConsole(
+                        title: "deadlock",
+                        body: self.isYouTubeDomain(normalizedWord)
+                            ? "Closed the YouTube browser window. IINA remains available."
+                            : "Closed the browser window showing a blocked distraction site."
+                    )
+                    return
+                }
+
+                // If Accessibility cannot close the focused browser window, fail
+                // closed rather than leaving the blocked site usable.
                 _ = Darwin.kill(pid, SIGTERM)
                 self.queue.asyncAfter(deadline: .now() + 1) {
                     if Darwin.kill(pid, 0) == 0 {
@@ -735,6 +748,38 @@ final class DeadlockDaemon {
                 body: "Blocked adult content and closed the app."
             )
         }
+    }
+
+    private func closeFocusedBrowserWindow(pid: pid_t) -> Bool {
+        let application = AXUIElementCreateApplication(pid)
+
+        var focusedWindowValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            application,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindowValue
+        ) == .success,
+              let focusedWindow = focusedWindowValue
+        else {
+            return false
+        }
+
+        let window = focusedWindow as! AXUIElement
+        var closeButtonValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            window,
+            kAXCloseButtonAttribute as CFString,
+            &closeButtonValue
+        ) == .success,
+              let closeButton = closeButtonValue
+        else {
+            return false
+        }
+
+        return AXUIElementPerformAction(
+            closeButton as! AXUIElement,
+            kAXPressAction as CFString
+        ) == .success
     }
 
     private func isYouTubeDomain(_ value: String) -> Bool {
