@@ -163,6 +163,97 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func normalizedDistractionDomain(
+        _ value: String
+    ) -> String {
+        var host = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if let url = URL(
+            string: host.contains("://")
+                ? host
+                : "https://\(host)"
+        ),
+           let urlHost = url.host?.lowercased() {
+            host = urlHost
+        }
+
+        while host.hasPrefix("www.") {
+            host.removeFirst(4)
+        }
+
+        return host
+    }
+
+    func isDistractionPresetEnabled(
+        _ preset: DistractionPreset
+    ) -> Bool {
+        let current = Set(
+            distractionSettings.blockedDomains.map(
+                normalizedDistractionDomain
+            )
+        )
+        return preset.domains
+            .map(normalizedDistractionDomain)
+            .allSatisfy(current.contains)
+    }
+
+    func setDistractionPreset(
+        _ preset: DistractionPreset,
+        enabled: Bool
+    ) {
+        guard status.distractionSettingsEditable else { return }
+
+        let targets = Set(
+            preset.domains.map(normalizedDistractionDomain)
+        )
+        var values = distractionSettings.blockedDomains
+
+        if enabled {
+            var existing = Set(
+                values.map(normalizedDistractionDomain)
+            )
+            for domain in preset.domains {
+                let normalized =
+                    normalizedDistractionDomain(domain)
+                if !existing.contains(normalized) {
+                    values.append(normalized)
+                    existing.insert(normalized)
+                }
+            }
+        } else {
+            values.removeAll {
+                targets.contains(
+                    normalizedDistractionDomain($0)
+                )
+            }
+        }
+
+        distractionSettings.blockedDomains = values
+    }
+
+    func isDistractionGroupEnabled(
+        _ group: DistractionPresetGroup
+    ) -> Bool {
+        group.presets.allSatisfy(
+            isDistractionPresetEnabled
+        )
+    }
+
+    func setDistractionGroup(
+        _ group: DistractionPresetGroup,
+        enabled: Bool
+    ) {
+        guard status.distractionSettingsEditable else { return }
+        for preset in group.presets {
+            setDistractionPreset(
+                preset,
+                enabled: enabled
+            )
+        }
+    }
+
     func startDistractionBlock() {
         do {
             let request: IPCRequest
@@ -674,6 +765,11 @@ struct ContentView: View {
                         Text("Blocked websites")
                             .font(.headline)
 
+                        DistractionPresetPicker(state: state)
+
+                        Text("Custom domains")
+                            .font(.subheadline.weight(.medium))
+
                         TextField(
                             "instagram.com, tiktok.com, reddit.com…",
                             text: Binding(
@@ -698,10 +794,12 @@ struct ContentView: View {
                         .disabled(!state.status.distractionSettingsEditable)
 
                         Text(
-                            "This is the Cold Turkey-style website layer. "
-                            + "YouTube is not blocked by default. "
-                            + "Once a distraction block starts, these settings "
-                            + "cannot be weakened until it ends."
+                            "Presets only edit the same website list below, "
+                            + "so you can mix presets with your own domains. "
+                            + "YouTube stays available to IINA while Deadlock "
+                            + "blocks it in supported browsers. Once a block "
+                            + "starts, these settings cannot be weakened until "
+                            + "it ends."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
