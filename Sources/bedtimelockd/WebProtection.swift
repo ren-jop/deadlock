@@ -14,6 +14,7 @@ final class WebProtection {
     struct ManagedState: Codable {
         var adultBlock: String
         var lastResolvedAt: Date
+        var youtubeSafeMappingSkipped: Bool?
     }
 
     private let hostsPath = "/etc/hosts"
@@ -89,6 +90,7 @@ final class WebProtection {
                 && oldState != nil
                 && oldState!.lastResolvedAt.addingTimeInterval(safeHostRefreshInterval) > now
                 && oldSection == oldState!.adultBlock
+                && (oldState!.youtubeSafeMappingSkipped ?? false) == youtubeBrowserOnly
 
             let state: ManagedState
             if canReuse, let oldState {
@@ -96,7 +98,8 @@ final class WebProtection {
             } else {
                 state = ManagedState(
                     adultBlock: buildAdultBlock(skipYouTubeSafeMapping: youtubeBrowserOnly),
-                    lastResolvedAt: now
+                    lastResolvedAt: now,
+                    youtubeSafeMappingSkipped: youtubeBrowserOnly
                 )
             }
             blocks.append(state.adultBlock)
@@ -137,7 +140,7 @@ final class WebProtection {
         if pornEnabled {
             guard let saved = loadState(),
                   adultSection == saved.adultBlock,
-                  saved.adultBlock == buildAdultBlock(skipYouTubeSafeMapping: youtubeBrowserOnly)
+                  (saved.youtubeSafeMappingSkipped ?? false) == youtubeBrowserOnly
             else {
                 return false
             }
