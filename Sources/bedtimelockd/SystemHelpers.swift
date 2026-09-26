@@ -1,6 +1,7 @@
 import Foundation
 import SystemConfiguration
 import Darwin
+import DeadlockShared
 
 func consoleUID() -> uid_t? {
     var uid: uid_t = 0
