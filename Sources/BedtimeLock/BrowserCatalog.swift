@@ -38,6 +38,14 @@ enum BrowserCatalog {
             return .accessibility
         }
 
+        // Future/less-common browsers still get the generic Accessibility
+        // path when their app identity clearly describes a browser.
+        if bundle.contains("browser")
+            || name.hasSuffix(" browser")
+            || name.contains(" browser ") {
+            return .accessibility
+        }
+
         return nil
     }
 
@@ -114,7 +122,9 @@ enum BrowserCatalog {
             "thorium",
             "sidekick",
             "yandex",
-            "sigmaos"
+            "sigmaos",
+            "wavebox",
+            "ghost browser"
         ]
 
         return names.contains {
@@ -134,7 +144,8 @@ enum BrowserCatalog {
             "waterfox",
             "floorp",
             "duckduckgo",
-            "orion"
+            "orion",
+            "min"
         ]
 
         return names.contains {
