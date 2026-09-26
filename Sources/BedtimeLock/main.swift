@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import DeadlockShared
 import Combine
+import Darwin
 
 @MainActor
 final class AppState: ObservableObject {
@@ -979,6 +980,42 @@ struct ContentView: View {
     }
 }
 
+
+enum MenuBarSingleton {
+    private static var lockDescriptor: Int32 = -1
+
+    static func acquire() -> Bool {
+        guard lockDescriptor < 0 else {
+            return true
+        }
+
+        let path =
+            "/tmp/deadlock-menubar-\(getuid()).lock"
+        let descriptor = Darwin.open(
+            path,
+            O_CREAT | O_RDWR,
+            S_IRUSR | S_IWUSR
+        )
+
+        guard descriptor >= 0 else {
+            // Failing open is unusual. Prefer one usable UI over making
+            // Deadlock disappear entirely.
+            return true
+        }
+
+        guard Darwin.flock(
+            descriptor,
+            LOCK_EX | LOCK_NB
+        ) == 0 else {
+            Darwin.close(descriptor)
+            return false
+        }
+
+        lockDescriptor = descriptor
+        return true
+    }
+}
+
 struct BedtimeLockApp: App {
     private let state = AppState()
 
@@ -1078,5 +1115,10 @@ func runCLI() -> Never {
 if CommandLine.arguments.contains("--ipc") {
     runCLI()
 } else {
+    guard MenuBarSingleton.acquire() else {
+        // Another Deadlock UI instance already owns the menu-bar slot.
+        // Exit successfully so launchd does not treat this as a crash.
+        exit(0)
+    }
     BedtimeLockApp.main()
 }
