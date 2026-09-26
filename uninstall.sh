@@ -57,6 +57,25 @@ if state_path.exists():
             elif policy.exists():
                 policy.unlink()
 
+        if username:
+            helium = Path('/Library/Managed Preferences') / username / 'net.imput.helium.plist'
+            hvals = {}
+            if helium.exists():
+                with helium.open('rb') as fh:
+                    hvals = plistlib.load(fh)
+            if snapshot.get('heliumCaptured') is True:
+                original = snapshot.get('heliumURLBlocklist', None)
+                if original is None:
+                    hvals.pop('URLBlocklist', None)
+                else:
+                    hvals['URLBlocklist'] = original
+                if hvals:
+                    helium.parent.mkdir(parents=True, exist_ok=True)
+                    with helium.open('wb') as fh:
+                        plistlib.dump(hvals, fh)
+                elif helium.exists():
+                    helium.unlink()
+
         firefox = Path('/Library/Preferences/org.mozilla.firefox.plist')
         fvals = {}
         if firefox.exists():
