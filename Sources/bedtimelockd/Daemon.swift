@@ -11,6 +11,7 @@ final class DeadlockDaemon {
     private var powerMonitor: PowerMonitor?
     private var contentMonitor: ContentMonitor?
     private let webProtection = WebProtection()
+    private let browserPolicyProtection = BrowserPolicyProtection()
     private let queue = DispatchQueue(label: "deadlock.state")
 
     private var warnedForStart: Date?
@@ -516,11 +517,21 @@ final class DeadlockDaemon {
             accountabilityEnabled: pornSettings.accountabilityEnabled,
             accountabilityTriggeredAt: store.state.accountabilityTriggeredAt,
             accountabilityReason: store.state.accountabilityReason,
-            webProtectionHealthy: webProtection.isHealthy(
-                pornEnabled: pornProtectionActive(now),
-                distractionsEnabled: distractionWebProtectionEnabled(now),
-                distractionDomains: effectiveDistractionSettings().blockedDomains
-            ),
+            webProtectionHealthy: {
+                let distractionsEnabled = distractionWebProtectionEnabled(now)
+                let domains = PolicyEngine.normalizedDomains(
+                    effectiveDistractionSettings().blockedDomains
+                )
+                let youtubeBlocked = distractionsEnabled
+                    && domains.contains(where: isYouTubeDomain)
+                return webProtection.isHealthy(
+                    pornEnabled: pornProtectionActive(now),
+                    distractionsEnabled: distractionsEnabled,
+                    distractionDomains: domains
+                ) && browserPolicyProtection.isHealthy(
+                    youtubeBlocked: youtubeBlocked
+                )
+            }(),
             webProtectionLastError: webProtectionLastError,
             distractionBlockUntil: store.state.distractionBlockUntil,
             distractionBlockActive: distractionWebProtectionEnabled(now),
@@ -834,9 +845,12 @@ final class DeadlockDaemon {
         let domains = PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
         )
+        let youtubeBlocked = distractionsEnabled
+            && domains.contains(where: isYouTubeDomain)
         let fingerprint = [
             pornEnabled ? "porn:1" : "porn:0",
             distractionsEnabled ? "distractions:1" : "distractions:0",
+            youtubeBlocked ? "youtube-browser:1" : "youtube-browser:0",
             domains.joined(separator: ",")
         ].joined(separator: "|")
 
@@ -862,6 +876,8 @@ final class DeadlockDaemon {
             pornEnabled: pornEnabled,
             distractionsEnabled: distractionsEnabled,
             distractionDomains: domains
+        ) && browserPolicyProtection.isHealthy(
+            youtubeBlocked: youtubeBlocked
         )
 
         if !force,
@@ -882,6 +898,9 @@ final class DeadlockDaemon {
                 distractionDomains: domains,
                 forceRefresh: force || refreshDue,
                 now: now
+            )
+            try browserPolicyProtection.apply(
+                youtubeBlocked: youtubeBlocked
             )
             lastWebProtectionFingerprint = fingerprint
             nextWebProtectionRefreshAt = nextRefresh
