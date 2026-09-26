@@ -41,6 +41,35 @@ final class AppState: ObservableObject {
             }
             guard configured else { return false }
 
+            let now = Date()
+            let youtubeAllowed =
+                self.status
+                    .temporaryAllowedDistractionDomains?
+                    .contains {
+                        domain, until in
+                        guard until > now else {
+                            return false
+                        }
+                        let host =
+                            domain.lowercased()
+                        return host == "youtube.com"
+                            || host.hasSuffix(
+                                ".youtube.com"
+                            )
+                            || host == "youtu.be"
+                            || host.hasSuffix(
+                                ".youtu.be"
+                            )
+                            || host == "youtube-nocookie.com"
+                            || host.hasSuffix(
+                                ".youtube-nocookie.com"
+                            )
+                    }
+                    ?? false
+            guard !youtubeAllowed else {
+                return false
+            }
+
             // No weekly schedule means the user's distraction list is an
             // always-on block. Otherwise, follow the daemon's active status.
             return !self.distractionSettings.scheduleEnabled
@@ -184,6 +213,105 @@ final class AppState: ObservableObject {
         }
 
         return host
+    }
+
+    private func temporaryAllowance(
+        for domain: String,
+        now: Date = Date()
+    ) -> Date? {
+        let normalized =
+            normalizedDistractionDomain(domain)
+
+        return status
+            .temporaryAllowedDistractionDomains?
+            .first(where: { key, until in
+                until > now
+                && (
+                    key == normalized
+                    || key.hasSuffix(
+                        "." + normalized
+                    )
+                    || normalized.hasSuffix(
+                        "." + key
+                    )
+                )
+            })?
+            .value
+    }
+
+    func isDistractionPresetTemporarilyAllowed(
+        _ preset: DistractionPreset
+    ) -> Bool {
+        let now = Date()
+        return preset.domains.allSatisfy {
+            temporaryAllowance(
+                for: $0,
+                now: now
+            ) != nil
+        }
+    }
+
+    func allowDistractionPresetUntilEndOfToday(
+        _ preset: DistractionPreset
+    ) {
+        let now = Date()
+        let start =
+            Calendar.current.startOfDay(
+                for: now
+            )
+        guard let until =
+                Calendar.current.date(
+                    byAdding: .day,
+                    value: 1,
+                    to: start
+                )
+        else {
+            message =
+                "Could not calculate local midnight."
+            return
+        }
+
+        var lastMessage = ""
+
+        do {
+            for domain in preset.domains {
+                let response =
+                    try UnixSocketClient.request(
+                        IPCRequest(
+                            command:
+                                .allowDistractionDomainUntil,
+                            text: domain,
+                            date: until
+                        )
+                    )
+
+                guard response.ok else {
+                    message =
+                        response.message
+                    return
+                }
+
+                lastMessage =
+                    response.message
+
+                if let status =
+                    response.status {
+                    self.status =
+                        status
+                }
+            }
+
+            message =
+                lastMessage.isEmpty
+                ? "\(preset.title) allowed until midnight."
+                : lastMessage
+            refreshStatus()
+        } catch {
+            message =
+                String(
+                    describing: error
+                )
+        }
     }
 
     func isDistractionPresetEnabled(
@@ -1021,7 +1149,7 @@ struct BedtimeLockApp: App {
 func runCLI() -> Never {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|uninstall-request|uninstall-status> [seconds]\n", stderr)
+        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|distraction-allow-today|distraction-allow-until|uninstall-request|uninstall-status> [args]\n", stderr)
         exit(2)
     }
 
@@ -1047,6 +1175,66 @@ func runCLI() -> Never {
             request = IPCRequest(
                 command: .startDistractionBlock,
                 seconds: seconds
+            )
+
+        case "distraction-allow-today":
+            guard args.count > index + 2 else {
+                fputs(
+                    "distraction-allow-today requires a domain\n",
+                    stderr
+                )
+                exit(2)
+            }
+
+            let domain = args[index + 2]
+            let start =
+                Calendar.current.startOfDay(
+                    for: Date()
+                )
+            guard let until =
+                    Calendar.current.date(
+                        byAdding: .day,
+                        value: 1,
+                        to: start
+                    )
+            else {
+                fputs(
+                    "could not calculate local midnight\n",
+                    stderr
+                )
+                exit(2)
+            }
+
+            request = IPCRequest(
+                command:
+                    .allowDistractionDomainUntil,
+                text: domain,
+                date: until
+            )
+
+        case "distraction-allow-until":
+            guard args.count > index + 3,
+                  let timestamp =
+                    TimeInterval(
+                        args[index + 3]
+                    ),
+                  timestamp.isFinite
+            else {
+                fputs(
+                    "distraction-allow-until requires DOMAIN UNIX_TIMESTAMP\n",
+                    stderr
+                )
+                exit(2)
+            }
+
+            request = IPCRequest(
+                command:
+                    .allowDistractionDomainUntil,
+                text: args[index + 2],
+                date: Date(
+                    timeIntervalSince1970:
+                        timestamp
+                )
             )
 
         case "uninstall-request":
