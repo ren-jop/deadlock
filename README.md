@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.3.5 preview  
+**Status:** v1.3.6 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -108,6 +108,10 @@ root daemon
      └─ managed hosts entries
 ```
 
+## Resilient launchd installation
+
+Deadlock v1.3.6 replaces the accumulated installer patches with one clean idempotent install flow. Each launchd job is unloaded, verified, bootstrapped by name, and retried once after stale launchd state is cleared. If macOS still rejects a job, the installer prints the exact label, launchd error, plist and signature diagnostics instead of stopping at an unhelpful `Bootstrap failed: 5`.
+
 ## Single menu-bar instance
 
 Deadlock v1.3.5 guards the menu UI with a per-user process lock. Opening the app manually while the LaunchAgent copy is already running now exits the duplicate before it can create a second menu-bar icon.
@@ -142,7 +146,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.3.5 because YouTube remains outside DNS blocking so IINA continues to work.
+A publicly resolving `youtube.com` is expected in v1.3.6 because YouTube remains outside DNS blocking so IINA continues to work.
 
 ## Update
 
