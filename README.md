@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.3.1 preview  
+**Status:** v1.3.2 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -118,7 +118,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.3.1 because YouTube remains outside DNS blocking so IINA continues to work.
+A publicly resolving `youtube.com` is expected in v1.3.2 because YouTube remains outside DNS blocking so IINA continues to work.
 
 ## Update
 
@@ -144,3 +144,20 @@ The older vendored snapshot and `source/patches/` directory are retained as hist
 ## License
 
 No open-source license has been selected yet.
+
+
+## Temporary distraction allowances
+
+A blocked distraction can be allowed for a short period without removing it from the permanent block list.
+
+From the app, right-click an enabled distraction preset and choose **Allow until midnight**.
+
+From Terminal:
+
+```bash
+./deadlockctl allow-today discord.com
+# convenience alias
+./deadlockctl allow-discord-today
+```
+
+The daemon persists the allowance, removes that domain from active web/content enforcement, automatically expires it, and reapplies blocking when the end time is reached.
