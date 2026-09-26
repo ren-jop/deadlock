@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.2.8 preview  
+**Status:** v1.2.9 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -37,14 +37,15 @@ YouTube is handled differently from other blocked domains.
 When `youtube.com` is in the distraction list:
 
 - Google Chrome receives a mandatory macOS `URLBlocklist`.
+- Helium receives the same Chromium-native `URLBlocklist` under its `net.imput.helium` managed-preferences domain.
 - Firefox receives Mozilla's native macOS `WebsiteFilter` policy with YouTube match patterns.
-- Chrome and Firefox reject those sites themselves, so their YouTube block does not depend on Accessibility or Automation permission.
+- Chrome, Helium and Firefox reject those sites themselves, so their YouTube block does not depend on Accessibility or Automation permission.
 - The logged-in helper remains as a fallback for other supported browsers.
 - The official YouTube app / installed YouTube web apps are blocked.
 - YouTube is **not** written into Deadlock's DNS / `/etc/hosts` block.
 - IINA is explicitly left alone.
 
-This keeps normal YouTube DNS resolution available for IINA-based playback while browsers refuse website navigation. Chrome exposes the applied rule at `chrome://policy` under `URLBlocklist`; Firefox exposes it at `about:policies` under `WebsiteFilter`.
+This keeps normal YouTube DNS resolution available for IINA-based playback while browsers refuse website navigation. Chrome exposes the applied rule at `chrome://policy`; Helium exposes it at `helium://policy`; Firefox exposes it at `about:policies`.
 
 ## How it works
 
@@ -70,7 +71,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.2.8 because Chrome and Firefox use browser policy rather than DNS for YouTube.
+A publicly resolving `youtube.com` is expected in v1.2.9 because Chrome, Helium and Firefox use browser policy rather than DNS for YouTube.
 
 ## Update
 
