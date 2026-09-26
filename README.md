@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.2.6 preview  
+**Status:** v1.2.7 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -36,15 +36,14 @@ YouTube is handled differently from other blocked domains.
 
 When `youtube.com` is in the distraction list:
 
-- YouTube is blocked in supported browsers by the logged-in menu-bar helper.
-- The helper closes the active YouTube tab instead of killing the whole browser.
+- Google Chrome receives a mandatory macOS `URLBlocklist` for `youtube.com`, `youtu.be` and `youtube-nocookie.com`.
+- Chrome itself rejects those sites, so the block does not depend on Accessibility or Automation permission.
+- The logged-in helper remains as a fallback for other supported browsers.
 - The official YouTube app / installed YouTube web apps are blocked.
 - YouTube is **not** written into Deadlock's DNS / `/etc/hosts` block.
 - IINA is explicitly left alone.
 
-macOS may ask once for **Automation** permission so deadlock can inspect and close the active tab in your browser. Allow that browser permission; deadlock never asks to control IINA.
-
-This keeps normal YouTube DNS resolution available for IINA-based playback while removing ordinary browser/app access.
+This keeps normal YouTube DNS resolution available for IINA-based playback while Chrome refuses website navigation. Chrome exposes the applied rule at `chrome://policy` under `URLBlocklist`.
 
 ## How it works
 
@@ -70,7 +69,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.2.6.
+A publicly resolving `youtube.com` is expected in v1.2.7 because the Chrome-only block is a browser policy rather than DNS.
 
 ## Update
 
