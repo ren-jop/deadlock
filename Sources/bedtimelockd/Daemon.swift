@@ -267,11 +267,11 @@ final class DeadlockDaemon {
 
             guard parts.year == 2026,
                   parts.month == 9,
-                  parts.day == 26
+                  parts.day == 27
             else {
                 return IPCResponse(
                     ok: false,
-                    message: "This one-off Discord exception was only valid on 26 Sep 2026.",
+                    message: "This one-off Discord exception is only valid on 27 Sep 2026.",
                     status: status()
                 )
             }
@@ -320,7 +320,7 @@ final class DeadlockDaemon {
                 reschedule()
                 return IPCResponse(
                     ok: true,
-                    message: "Discord is allowed until local midnight. This exception cannot be used again.",
+                    message: "Discord is allowed until local midnight tonight. This one-off exception is permanently consumed and cannot be extended or used again.",
                     status: status()
                 )
             } catch {
