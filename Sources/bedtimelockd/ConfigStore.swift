@@ -11,6 +11,7 @@ final class ConfigStore {
     init() throws {
         try fm.createDirectory(atPath: DeadlockPaths.support, withIntermediateDirectories: true)
         keyData = try ConfigStore.loadOrCreateKey()
+        state = PersistedState()
         if let loaded = try? loadVerified(path: DeadlockPaths.state, signaturePath: DeadlockPaths.stateSignature) {
             state = loaded
         } else if let backup = try? loadVerified(path: DeadlockPaths.backupState, signaturePath: DeadlockPaths.backupSignature) {
