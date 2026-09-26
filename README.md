@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.3.4 preview  
+**Status:** v1.3.5 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -108,6 +108,12 @@ root daemon
      └─ managed hosts entries
 ```
 
+## Single menu-bar instance
+
+Deadlock v1.3.5 guards the menu UI with a per-user process lock. Opening the app manually while the LaunchAgent copy is already running now exits the duplicate before it can create a second menu-bar icon.
+
+The LaunchAgent only restarts the menu process after an abnormal exit, so a clean duplicate exit cannot turn into a five-second relaunch loop. The installer and `deadlockctl menu` also clear stray UI processes left behind by older builds before launching one canonical instance.
+
 ## Permissions across local rebuilds
 
 Deadlock is intentionally buildable without a paid Apple developer account. Older builds were ad-hoc signed with the default changing cdhash identity, so macOS could keep an approved Deadlock entry in Privacy & Security while still treating the newly rebuilt binary as a different requester.
@@ -136,7 +142,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.3.4 because YouTube remains outside DNS blocking so IINA continues to work.
+A publicly resolving `youtube.com` is expected in v1.3.5 because YouTube remains outside DNS blocking so IINA continues to work.
 
 ## Update
 
