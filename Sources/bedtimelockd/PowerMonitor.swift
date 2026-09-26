@@ -2,6 +2,12 @@ import Foundation
 import IOKit
 import IOKit.pwr_mgt
 
+// These IOKit message macros are no longer imported reliably by current Swift.
+// Values are the public IOMessage.h constants used by IORegisterForSystemPower.
+private let deadlockIOMessageCanSystemSleep: UInt32 = 0xe0000270
+private let deadlockIOMessageSystemWillSleep: UInt32 = 0xe0000280
+private let deadlockIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
+
 final class PowerMonitor {
     private var rootPort: io_connect_t = 0
     private var notifier: IONotificationPortRef?
@@ -18,11 +24,11 @@ final class PowerMonitor {
             guard let refcon else { return }
             let me = Unmanaged<PowerMonitor>.fromOpaque(refcon).takeUnretainedValue()
             switch messageType {
-            case UInt32(kIOMessageSystemHasPoweredOn):
+            case deadlockIOMessageSystemHasPoweredOn:
                 me.onWake()
-            case UInt32(kIOMessageCanSystemSleep):
+            case deadlockIOMessageCanSystemSleep:
                 IOAllowPowerChange(service, Int(bitPattern: messageArgument))
-            case UInt32(kIOMessageSystemWillSleep):
+            case deadlockIOMessageSystemWillSleep:
                 IOAllowPowerChange(service, Int(bitPattern: messageArgument))
             default:
                 break
