@@ -2,7 +2,7 @@
 
 A small macOS app for enforcing sleep hours and blocking distracting websites.
 
-**Status:** v1.2.5 preview  
+**Status:** v1.2.6 preview  
 **Platform:** Apple Silicon, macOS 14+  
 **Stack:** Swift, SwiftPM, launchd, IOKit, Unix sockets
 
@@ -36,10 +36,13 @@ YouTube is handled differently from other blocked domains.
 
 When `youtube.com` is in the distraction list:
 
-- YouTube is blocked in supported browsers.
+- YouTube is blocked in supported browsers by the logged-in menu-bar helper.
+- The helper closes the active YouTube tab instead of killing the whole browser.
 - The official YouTube app / installed YouTube web apps are blocked.
 - YouTube is **not** written into Deadlock's DNS / `/etc/hosts` block.
 - IINA is explicitly left alone.
+
+macOS may ask once for **Automation** permission so deadlock can inspect and close the active tab in your browser. Allow that browser permission; deadlock never asks to control IINA.
 
 This keeps normal YouTube DNS resolution available for IINA-based playback while removing ordinary browser/app access.
 
@@ -67,7 +70,7 @@ bash ./deadlockctl doctor
 
 `deadlockctl web` shows the active policy, configured domains, Deadlock-owned hosts entries and resolver checks.
 
-A publicly resolving `youtube.com` is expected in v1.2.5.
+A publicly resolving `youtube.com` is expected in v1.2.6.
 
 ## Update
 
@@ -86,9 +89,9 @@ The normal uninstall path is intentionally high-friction.
 
 ## Development
 
-The installable source is reconstructed from the vendored source snapshot plus the reviewed patches under `source/patches/`.
+The top-level `Sources/` tree is the canonical installable source. `install.sh` builds that exact tree locally before replacing the app, daemon and launchd jobs.
 
-GitHub Actions applies the same patch chain and builds it on macOS ARM64.
+The older vendored snapshot and `source/patches/` directory are retained as historical migration material only. GitHub Actions now builds the same top-level source that the installer uses.
 
 ## License
 
