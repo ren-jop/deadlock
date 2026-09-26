@@ -18,141 +18,10 @@ status() {
   echo
   echo "== processes =="
   ps -axo pid,%cpu,rss,etime,command | grep -E '[b]edtimelockd|/deadlock.app/Contents/MacOS/[d]eadlock' || true
-  MENU_COUNT="$(pgrep -u "$UID_NOW" -f '^/Applications/deadlock\.app/Contents/MacOS/deadlock
-}
 
-logs() {
-  log show --last 15m --style compact --predicate 'process == "bedtimelockd" OR eventMessage CONTAINS[c] "deadlock"' 2>/dev/null | tail -180
-}
-
-perf() {
-  echo "Sampling CPU/RAM every 5 seconds for 30 seconds. RSS is KiB."
-  for _ in 1 2 3 4 5 6; do
-    date
-    ps -axo pid,%cpu,rss,etime,command | grep -E '[b]edtimelockd|/deadlock.app/Contents/MacOS/[d]eadlock' || true
-    sleep 5
-  done
-}
-
-web() {
-  echo "== daemon web status =="
-  "$APP/Contents/MacOS/deadlock" --ipc web-status 2>&1 || true
-  echo
-  echo "== deadlock managed hosts =="
-  awk '/# BEGIN DEADLOCK/{show=1} show{print} /# END DEADLOCK/{show=0}' /etc/hosts || true
-  echo
-  echo "== resolver spot checks =="
-  for host in instagram.com tiktok.com reddit.com x.com youtube.com; do
-    printf '%-22s ' "$host"
-    dscacheutil -q host -a name "$host" 2>/dev/null | awk '/ip_address:/{printf "%s ", $2} END{print ""}'
-  done
-  echo
-  echo "== Chrome mandatory policy =="
-  USER_NAME="$(id -un)"
-  POLICY="/Library/Managed Preferences/$USER_NAME/com.google.Chrome.plist"
-  if [[ -f "$POLICY" ]]; then
-    plutil -p "$POLICY" 2>/dev/null | grep -A12 'URLBlocklist' || plutil -p "$POLICY" 2>/dev/null || true
-  else
-    echo "No Chrome managed policy file at: $POLICY"
-  fi
-  echo
-  echo "== Helium mandatory policy =="
-  HELIUM_POLICY="/Library/Managed Preferences/$USER_NAME/net.imput.helium.plist"
-  if [[ -f "$HELIUM_POLICY" ]]; then
-    plutil -p "$HELIUM_POLICY" 2>/dev/null | grep -A12 'URLBlocklist' || plutil -p "$HELIUM_POLICY" 2>/dev/null || true
-  else
-    echo "No Helium managed policy file at: $HELIUM_POLICY"
-  fi
-  echo
-  echo "== Firefox enterprise policy =="
-  FIREFOX_POLICY="/Library/Preferences/org.mozilla.firefox.plist"
-  if [[ -f "$FIREFOX_POLICY" ]]; then
-    plutil -p "$FIREFOX_POLICY" 2>/dev/null | grep -E -A14 'EnterprisePoliciesEnabled|WebsiteFilter__Block' || plutil -p "$FIREFOX_POLICY" 2>/dev/null || true
-  else
-    echo "No Firefox policy file at: $FIREFOX_POLICY"
-  fi
-  echo
-  echo "== cross-browser YouTube enforcement =="
-  echo "Native policy: Chrome, Helium, Firefox."
-  echo "AppleScript + fallback: Safari, Chrome-family, Brave, Edge, Arc, Vivaldi,"
-  echo "Opera / Opera GX, Chromium, Helium and similar Chromium browsers."
-  echo "Accessibility fallback: Zen, Firefox forks, DuckDuckGo, Orion and other"
-  echo "recognized browser apps. Unknown browser apps with a browser-like identity"
-  echo "also use the generic fallback."
-  echo "If prompted, enable deadlock in Privacy & Security → Accessibility."
-  echo
-  echo "YouTube resolving publicly is expected. Browser enforcement is app-specific"
-  echo "so IINA and other non-browser clients keep normal DNS access."
-  echo "Verify in Chrome at chrome://policy → URLBlocklist."
-  echo "Verify in Helium at helium://policy → URLBlocklist."
-  echo "Verify in Firefox at about:policies → Active → WebsiteFilter."
-  echo
-  echo "For other configured domains that unexpectedly resolve publicly, flush caches with:"
-  echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
-}
-
-doctor() {
-  echo "=== deadlock doctor ==="
-  for path in     "$APP"     /Library/PrivilegedHelperTools/bedtimelockd     /Library/LaunchDaemons/com.deadlock.daemon.plist     /Library/LaunchDaemons/com.deadlock.watchdog.plist     "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"     /var/run/deadlock.sock
-  do
-    [[ -e "$path" ]] && ls -ld "$path" || echo "MISSING: $path"
-  done
-  echo
-  echo "-- plist syntax --"
-  sudo plutil -lint /Library/LaunchDaemons/com.deadlock.daemon.plist 2>&1 || true
-  sudo plutil -lint /Library/LaunchDaemons/com.deadlock.watchdog.plist 2>&1 || true
-  plutil -lint "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist" 2>&1 || true
-  echo
-  echo "-- signatures --"
-  codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 || true
-  codesign --verify --verbose=2 /Library/PrivilegedHelperTools/bedtimelockd 2>&1 || true
-  echo
-  echo "-- owned hosts sections --"
-  grep -nE 'BEGIN DEADLOCK|END DEADLOCK' /etc/hosts || echo "No deadlock hosts sections currently active."
-  echo
-  echo "-- CLI / Focus bridge --"
-  "$APP/Contents/MacOS/deadlock" --ipc status 2>&1 || true
-  echo
-  status
-  echo
-  echo "-- recent logs --"
-  logs
-}
-
-case "${1:-}" in
-  status) status ;;
-  logs) logs ;;
-  restart)
-    sudo launchctl kickstart -k system/com.deadlock.daemon
-    sleep 1
-    status
-    ;;
-  menu)
-    AGENT="$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"
-    launchctl bootout "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || true
-    pkill -u "$UID_NOW" -f '^/Applications/deadlock\.app/Contents/MacOS/deadlock
-  perf) perf ;;
-  web) web ;;
-  doctor) doctor ;;
-  discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"; exit 1 ;;
-esac
- 2>/dev/null || true
-    sleep 0.2
-    if [[ -f "$AGENT" ]]; then
-      launchctl bootstrap "gui/$UID_NOW" "$AGENT" 2>/dev/null || true
-      launchctl kickstart "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || open -g "$APP"
-    else
-      open -g "$APP"
-    fi
-    ;;
-  perf) perf ;;
-  web) web ;;
-  doctor) doctor ;;
-  discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"; exit 1 ;;
-esac
- 2>/dev/null | wc -l | tr -d ' ')"
+  MENU_COUNT="$(
+    pgrep -u "$UID_NOW" -f "/Applications/deadlock[.]app/Contents/MacOS/deadlock" 2>/dev/null       | wc -l       | tr -d ' '
+  )"
   if [[ "$MENU_COUNT" -gt 1 ]]; then
     echo "WARNING: $MENU_COUNT Deadlock menu processes found. Run: ./deadlockctl menu"
   fi
@@ -267,14 +136,7 @@ case "${1:-}" in
   menu)
     AGENT="$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"
     launchctl bootout "gui/$UID_NOW/com.deadlock.menubar" 2>/dev/null || true
-    pkill -u "$UID_NOW" -f '^/Applications/deadlock\.app/Contents/MacOS/deadlock
-  perf) perf ;;
-  web) web ;;
-  doctor) doctor ;;
-  discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"; exit 1 ;;
-esac
- 2>/dev/null || true
+    pkill -u "$UID_NOW" -f "/Applications/deadlock[.]app/Contents/MacOS/deadlock" 2>/dev/null || true
     sleep 0.2
     if [[ -f "$AGENT" ]]; then
       launchctl bootstrap "gui/$UID_NOW" "$AGENT" 2>/dev/null || true
@@ -287,5 +149,8 @@ esac
   web) web ;;
   doctor) doctor ;;
   discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
-  *) echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"; exit 1 ;;
+  *)
+    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"
+    exit 1
+    ;;
 esac
