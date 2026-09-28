@@ -211,7 +211,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
     public var distractionBlockUntil: Date?
     public var distractionSettings: DistractionSettings?
 
-    /// One-off exception requested for 26 Sep 2026 only.
+    /// Single-use dated distraction exception slot. The legacy field names are
+    /// preserved so existing persisted state remains decodable across upgrades.
     public var discordOneOffAllowedUntil: Date?
     public var discordOneOffUsed: Bool?
 
@@ -363,6 +364,7 @@ public enum IPCCommand: String, Codable, Sendable {
     case startPornBlocker
     case startDistractionBlock
     case allowDiscordOneOff
+    case allowInstagramOneOff
     case setPornSettings
     case setDistractionSettings
     case lockSettings
