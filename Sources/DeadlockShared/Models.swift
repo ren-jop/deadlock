@@ -364,7 +364,6 @@ public enum IPCCommand: String, Codable, Sendable {
     case startPornBlocker
     case startDistractionBlock
     case allowDiscordOneOff
-    case allowInstagramOneOff
     case setPornSettings
     case setDistractionSettings
     case lockSettings
