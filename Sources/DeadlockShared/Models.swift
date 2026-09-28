@@ -212,6 +212,10 @@ public struct PersistedState: Codable, Hashable, Sendable {
     public var accountabilityReason: String?
     public var lastAccountabilityTriggeredAt: Date?
 
+    /// Separate emergency-access event for friend notification. This is kept
+    /// independent from porn accountability so it never opens the porn overlay.
+    public var emergencyAccessTriggeredAt: Date?
+
     /// Ordinary distraction blocking is separate from the stricter Porn Blocker.
     public var distractionBlockUntil: Date?
     public var distractionSettings: DistractionSettings?
@@ -220,6 +224,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
     /// preserved so existing persisted state remains decodable across upgrades.
     public var discordOneOffAllowedUntil: Date?
     public var discordOneOffUsed: Bool?
+    /// 29 Sep 2026 setup-only Discord exception. Optional for backwards-compatible decoding.
+    public var discordSetupExceptionUsed: Bool?
 
     public init(
         current: LockConfig = .defaultConfig,
@@ -235,10 +241,12 @@ public struct PersistedState: Codable, Hashable, Sendable {
         accountabilityTriggeredAt: Date? = nil,
         accountabilityReason: String? = nil,
         lastAccountabilityTriggeredAt: Date? = nil,
+        emergencyAccessTriggeredAt: Date? = nil,
         distractionBlockUntil: Date? = nil,
         distractionSettings: DistractionSettings? = nil,
         discordOneOffAllowedUntil: Date? = nil,
-        discordOneOffUsed: Bool? = nil
+        discordOneOffUsed: Bool? = nil,
+        discordSetupExceptionUsed: Bool? = nil
     ) {
         self.current = current
         self.pending = pending
@@ -253,10 +261,12 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.accountabilityTriggeredAt = accountabilityTriggeredAt
         self.accountabilityReason = accountabilityReason
         self.lastAccountabilityTriggeredAt = lastAccountabilityTriggeredAt
+        self.emergencyAccessTriggeredAt = emergencyAccessTriggeredAt
         self.distractionBlockUntil = distractionBlockUntil
         self.distractionSettings = distractionSettings
         self.discordOneOffAllowedUntil = discordOneOffAllowedUntil
         self.discordOneOffUsed = discordOneOffUsed
+        self.discordSetupExceptionUsed = discordSetupExceptionUsed
     }
 }
 
@@ -280,6 +290,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
     public var emergencyReadyAt: Date?
     public var emergencyOverrideUntil: Date?
     public var emergencyImmediateAvailable: Bool
+    public var emergencyAccessTriggeredAt: Date?
     public var uninstallReadyAt: Date?
     public var testWindowStart: Date?
     public var testWindowEnd: Date?
@@ -315,6 +326,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         emergencyReadyAt: Date? = nil,
         emergencyOverrideUntil: Date? = nil,
         emergencyImmediateAvailable: Bool = false,
+        emergencyAccessTriggeredAt: Date? = nil,
         uninstallReadyAt: Date? = nil,
         testWindowStart: Date? = nil,
         testWindowEnd: Date? = nil,
@@ -345,6 +357,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         self.emergencyReadyAt = emergencyReadyAt
         self.emergencyOverrideUntil = emergencyOverrideUntil
         self.emergencyImmediateAvailable = emergencyImmediateAvailable
+        self.emergencyAccessTriggeredAt = emergencyAccessTriggeredAt
         self.uninstallReadyAt = uninstallReadyAt
         self.testWindowStart = testWindowStart
         self.testWindowEnd = testWindowEnd
