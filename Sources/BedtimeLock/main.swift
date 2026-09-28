@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     private var accountabilityWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var accountabilityAttemptedEvent: Date?
+    private var emergencyPromptVisible = false
 
     private lazy var browserYouTubeGuard = BrowserYouTubeGuard(
         shouldBlock: { [weak self] in
@@ -56,6 +57,16 @@ final class AppState: ObservableObject {
     init() {
         scheduleRefresh()
         browserYouTubeGuard.start()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemWake()
+            }
+        }
 
         // Do not block creation of the menu-bar item if the root daemon is
         // still starting. IPC has a timeout, but the UI should appear instantly.
@@ -343,7 +354,23 @@ final class AppState: ObservableObject {
         } catch { message = String(describing: error) }
     }
 
+    private func handleSystemWake() {
+        // The daemon intentionally waits a few seconds before re-enforcing sleep
+        // after a wake so this prompt can be used without opening Terminal.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            self.refreshStatus()
+            guard self.status.active,
+                  self.status.emergencyImmediateAvailable else { return }
+            self.confirmEmergencyNow()
+        }
+    }
+
     func confirmEmergencyNow() {
+        guard !emergencyPromptVisible else { return }
+        emergencyPromptVisible = true
+        defer { emergencyPromptVisible = false }
+
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = "Start emergency sleep access?"
