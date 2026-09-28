@@ -9,6 +9,8 @@ final class AppState: ObservableObject {
     @Published var config: LockConfig = .defaultConfig
     @Published var pornSettings: PornSettings = .defaultSettings
     @Published var distractionSettings: DistractionSettings = .defaultSettings
+    @Published var bedGuardSettings: BedGuardSettings = .defaultSettings
+    @Published var bedGuardSensor = BedGuardSensorSnapshot()
     @Published var status = DaemonStatus(daemonRunning: false)
     @Published var message = ""
     @Published var emergencyChallenge = ""
@@ -27,6 +29,15 @@ final class AppState: ObservableObject {
     private var accountabilityAttemptedEvent: Date?
     private var emergencyMessageAttemptedEvent: Date?
     private var emergencyPromptVisible = false
+
+    private lazy var airPodsBedGuard = AirPodsBedGuard(
+        onSnapshot: { [weak self] snapshot in
+            self?.bedGuardSensor = snapshot
+        },
+        onTrigger: { [weak self] in
+            self?.triggerBedGuard()
+        }
+    )
 
     private lazy var browserYouTubeGuard = BrowserYouTubeGuard(
         shouldBlock: { [weak self] in
@@ -82,6 +93,7 @@ final class AppState: ObservableObject {
             if let config = response.config { self.config = config }
             if let pornSettings = response.pornSettings { self.pornSettings = pornSettings }
             if let distractionSettings = response.distractionSettings { self.distractionSettings = distractionSettings }
+            if let bedGuardSettings = response.bedGuardSettings { applyBedGuardSettings(bedGuardSettings) }
             if let status = response.status { self.status = status }
             message = ""
             updateCountdownWindow()
@@ -100,6 +112,7 @@ final class AppState: ObservableObject {
             if let status = response.status { self.status = status }
             if let pornSettings = response.pornSettings { self.pornSettings = pornSettings }
             if let distractionSettings = response.distractionSettings { self.distractionSettings = distractionSettings }
+            if let bedGuardSettings = response.bedGuardSettings { applyBedGuardSettings(bedGuardSettings) }
             updateCountdownWindow()
             updateAccountabilityWindow()
             sendEmergencyAccessMessageIfNeeded()
@@ -176,6 +189,89 @@ final class AppState: ObservableObject {
             if let status = response.status { self.status = status }
         } catch {
             message = String(describing: error)
+        }
+    }
+
+
+    private func applyBedGuardSettings(_ settings: BedGuardSettings) {
+        bedGuardSettings = settings
+        airPodsBedGuard.update(settings: settings)
+    }
+
+    func setBedGuardEnabled(_ enabled: Bool) {
+        var new = bedGuardSettings
+        if enabled && new.poses.isEmpty {
+            message = "Record at least one bed posture before enabling Bed Guard."
+            return
+        }
+        new.enabled = enabled
+        saveBedGuardSettings(new)
+    }
+
+    func recordBedGuardPose() {
+        guard !status.configChangesBlocked else {
+            message = "Bed Guard cannot be changed while sleep settings are locked by the current window."
+            return
+        }
+
+        message = "Hold your normal laptop-in-bed position for 5 seconds."
+        airPodsBedGuard.captureCurrentPose { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let pose):
+                var new = self.bedGuardSettings
+                if new.poses.count >= 4 {
+                    new.poses.removeFirst()
+                }
+                new.poses.append(pose)
+                self.saveBedGuardSettings(new)
+            case .failure(let error):
+                self.message = error.localizedDescription
+            }
+        }
+    }
+
+    func clearBedGuardPoses() {
+        var new = bedGuardSettings
+        new.enabled = false
+        new.poses = []
+        saveBedGuardSettings(new)
+    }
+
+    private func saveBedGuardSettings(_ settings: BedGuardSettings) {
+        do {
+            let response = try UnixSocketClient.request(
+                IPCRequest(
+                    command: .setBedGuardSettings,
+                    bedGuardSettings: settings
+                )
+            )
+            message = response.message
+            if let saved = response.bedGuardSettings {
+                applyBedGuardSettings(saved)
+            }
+            if let status = response.status {
+                self.status = status
+            }
+        } catch {
+            message = "Could not save Bed Guard: \(error)"
+        }
+    }
+
+    private func triggerBedGuard() {
+        do {
+            let response = try UnixSocketClient.request(
+                IPCRequest(command: .bedGuardTrigger)
+            )
+            message = response.message
+            if let status = response.status {
+                self.status = status
+            }
+            if let saved = response.bedGuardSettings {
+                applyBedGuardSettings(saved)
+            }
+        } catch {
+            message = "Bed Guard could not reach the daemon: \(error)"
         }
     }
 
@@ -804,6 +900,95 @@ struct ContentView: View {
                     }.padding(4)
                 }
 
+
+                GroupBox("Bed Guard — AirPods") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(state.bedGuardSensor.message)
+                                    .font(.headline)
+                                Text(
+                                    state.bedGuardSettings.poses.isEmpty
+                                        ? "No bed positions recorded yet."
+                                        : "\(state.bedGuardSettings.poses.count) bed position\(state.bedGuardSettings.poses.count == 1 ? "" : "s") recorded."
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Circle()
+                                .frame(width: 9, height: 9)
+                                .foregroundStyle(
+                                    state.bedGuardSettings.enabled
+                                        && state.bedGuardSensor.monitoring
+                                        ? .orange
+                                        : .secondary
+                                )
+                        }
+
+                        Toggle(
+                            "Enable Bed Guard",
+                            isOn: Binding(
+                                get: { state.bedGuardSettings.enabled },
+                                set: { state.setBedGuardEnabled($0) }
+                            )
+                        )
+                        .disabled(
+                            state.status.configChangesBlocked
+                                || state.bedGuardSettings.poses.isEmpty
+                        )
+
+                        if state.bedGuardSensor.calibrating {
+                            ProgressView(
+                                value: state.bedGuardSensor.calibrationProgress
+                            )
+                            Text("Stay in the position you normally use the laptop in bed.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if state.bedGuardSensor.heldSeconds > 0 {
+                            ProgressView(
+                                value: min(
+                                    1,
+                                    state.bedGuardSensor.heldSeconds
+                                        / state.bedGuardSettings.sustainSeconds
+                                )
+                            )
+                            Text(
+                                "Bed-like posture held for \(Int(state.bedGuardSensor.heldSeconds))s / \(Int(state.bedGuardSettings.sustainSeconds))s."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Button("Record current bed posture (5 sec)") {
+                                state.recordBedGuardPose()
+                            }
+                            .disabled(
+                                state.status.configChangesBlocked
+                                    || state.bedGuardSensor.calibrating
+                            )
+
+                            Button("Clear poses") {
+                                state.clearBedGuardPoses()
+                            }
+                            .disabled(
+                                state.status.configChangesBlocked
+                                    || state.bedGuardSettings.poses.isEmpty
+                            )
+                        }
+
+                        Text("Wear motion-capable AirPods, get into a normal laptop-in-bed position, then record it. Add separate back/left/right positions if needed. If a saved posture matches for 20 seconds, the root daemon sleeps the Mac. Waking it without getting up will let Bed Guard trigger again.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("Motion is processed locally. Deadlock does not use the microphone or camera. After calibration, Settings Guard can stop you from disabling Bed Guard impulsively.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(4)
+                }
+
                 GroupBox("Distractions") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -1209,6 +1394,9 @@ struct BedtimeLockApp: App {
             }
             if state.status.distractionBlockActive {
                 Label("Distractions blocked", systemImage: "eye.slash.fill")
+            }
+            if state.bedGuardSettings.enabled {
+                Label("Bed Guard armed", systemImage: "airpodspro")
             }
 
             Divider()

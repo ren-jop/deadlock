@@ -27,6 +27,7 @@ final class DeadlockDaemon {
     private let webProtectionHealthCheckInterval: TimeInterval = 5 * 60
     private var webProtectionRetryDelay: TimeInterval = 60
     private var webProtectionLastError: String?
+    private var lastBedGuardTriggerAt: Date?
 
     init() throws {
         store = try ConfigStore()
@@ -37,6 +38,7 @@ final class DeadlockDaemon {
     func run() {
         ensurePornSettings()
         ensureDistractionSettings()
+        ensureBedGuardSettings()
 
         powerMonitor = PowerMonitor { [weak self] in
             // Give the menu app a brief chance to present the explicit emergency
@@ -138,6 +140,50 @@ final class DeadlockDaemon {
         )
     }
 
+
+    private func sanitizedBedGuardSettings(
+        _ settings: BedGuardSettings
+    ) -> BedGuardSettings {
+        var sanitized = settings
+        sanitized.matchAngleDegrees = min(45, max(10, settings.matchAngleDegrees))
+        sanitized.sustainSeconds = min(120, max(8, settings.sustainSeconds))
+
+        sanitized.poses = Array(settings.poses.prefix(4)).compactMap { pose in
+            guard pose.x.isFinite, pose.y.isFinite, pose.z.isFinite else {
+                return nil
+            }
+            let magnitude = sqrt(
+                pose.x * pose.x
+                    + pose.y * pose.y
+                    + pose.z * pose.z
+            )
+            guard magnitude > 0.5 else { return nil }
+            return BedGuardVector(
+                x: pose.x / magnitude,
+                y: pose.y / magnitude,
+                z: pose.z / magnitude
+            )
+        }
+
+        if sanitized.poses.isEmpty {
+            sanitized.enabled = false
+        }
+        return sanitized
+    }
+
+    private func ensureBedGuardSettings() {
+        guard store.state.bedGuardSettings == nil else { return }
+        try? store.mutate { state in
+            state.bedGuardSettings = .defaultSettings
+        }
+    }
+
+    private func effectiveBedGuardSettings() -> BedGuardSettings {
+        sanitizedBedGuardSettings(
+            store.state.bedGuardSettings ?? .defaultSettings
+        )
+    }
+
     private func effectiveDistractionDomains(
         _ now: Date = Date()
     ) -> [String] {
@@ -182,10 +228,10 @@ final class DeadlockDaemon {
         applyPendingIfDue()
         switch req.command {
         case .getStatus:
-            return IPCResponse(ok: true, message: "ok", status: status(), pornSettings: effectivePornSettings(), distractionSettings: effectiveDistractionSettings())
+            return IPCResponse(ok: true, message: "ok", status: status(), pornSettings: effectivePornSettings(), distractionSettings: effectiveDistractionSettings(), bedGuardSettings: effectiveBedGuardSettings())
 
         case .getConfig:
-            return IPCResponse(ok: true, message: "ok", status: status(), config: store.state.current, pornSettings: effectivePornSettings(), distractionSettings: effectiveDistractionSettings())
+            return IPCResponse(ok: true, message: "ok", status: status(), config: store.state.current, pornSettings: effectivePornSettings(), distractionSettings: effectiveDistractionSettings(), bedGuardSettings: effectiveBedGuardSettings())
 
         case .setConfig:
             guard var new = req.config else { return IPCResponse(ok: false, message: "Missing config") }
@@ -276,6 +322,102 @@ final class DeadlockDaemon {
                     status: status()
                 )
             }
+
+        case .setBedGuardSettings:
+            guard let requested = req.bedGuardSettings else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Missing Bed Guard settings.",
+                    status: status(),
+                    bedGuardSettings: effectiveBedGuardSettings()
+                )
+            }
+
+            let now = Date()
+            if let until = store.state.settingsLockedUntil, until > now {
+                return IPCResponse(
+                    ok: false,
+                    message: "Bed Guard settings are locked until \(ISO8601DateFormatter().string(from: until)).",
+                    status: status(),
+                    bedGuardSettings: effectiveBedGuardSettings()
+                )
+            }
+            guard !status().configChangesBlocked else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Bed Guard cannot be changed while the sleep lock is active or within 5 minutes of it.",
+                    status: status(),
+                    bedGuardSettings: effectiveBedGuardSettings()
+                )
+            }
+
+            let new = sanitizedBedGuardSettings(requested)
+            do {
+                try store.mutate { state in
+                    state.bedGuardSettings = new
+                }
+                return IPCResponse(
+                    ok: true,
+                    message: new.enabled
+                        ? "Bed Guard armed. A calibrated bed posture held for \(Int(new.sustainSeconds)) seconds will sleep this Mac."
+                        : "Bed Guard settings saved.",
+                    status: status(),
+                    bedGuardSettings: new
+                )
+            } catch {
+                return IPCResponse(
+                    ok: false,
+                    message: "Could not save Bed Guard settings: \(error)",
+                    status: status(),
+                    bedGuardSettings: effectiveBedGuardSettings()
+                )
+            }
+
+        case .bedGuardTrigger:
+            let now = Date()
+            let settings = effectiveBedGuardSettings()
+            guard settings.enabled, !settings.poses.isEmpty else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Bed Guard is not armed.",
+                    status: status(),
+                    bedGuardSettings: settings
+                )
+            }
+            guard !overrideActive(now) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Bed Guard ignored during an active emergency sleep override.",
+                    status: status(),
+                    bedGuardSettings: settings
+                )
+            }
+            if let last = lastBedGuardTriggerAt,
+               now.timeIntervalSince(last) < 10 {
+                return IPCResponse(
+                    ok: true,
+                    message: "Bed Guard sleep already requested.",
+                    status: status(),
+                    bedGuardSettings: settings
+                )
+            }
+
+            lastBedGuardTriggerAt = now
+            notifyConsole(
+                title: "deadlock",
+                body: "Bed posture detected. Put the laptop away and get out of bed."
+            )
+            // Reply before sleeping so the user app doesn't treat the expected
+            // system sleep as a failed IPC call.
+            queue.asyncAfter(deadline: .now() + 0.75) { [weak self] in
+                self?.forceSleep()
+            }
+            return IPCResponse(
+                ok: true,
+                message: "Bed Guard triggered sleep.",
+                status: status(),
+                bedGuardSettings: settings
+            )
 
         case .allowDiscordOneOff:
             // Kept for compatibility with older clients. Discord is now an

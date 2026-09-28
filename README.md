@@ -30,6 +30,21 @@ The installer builds locally, installs the app and privileged components, and co
 - Provides a watchdog and recovery path.
 - Exposes status and web diagnostics through `deadlockctl`.
 
+### Bed Guard (AirPods)
+
+Bed Guard is an optional second sleep trigger for keeping the laptop out of bed.
+
+1. Connect and wear AirPods or other Apple headphones that expose head-tracking motion.
+2. Open Deadlock and choose **Record current bed posture (5 sec)** while lying/reclining in the position you normally use the laptop.
+3. Record up to four positions (for example back, left side and right side).
+4. Enable **Bed Guard**.
+
+Deadlock compares the live AirPods gravity vector with those local calibration samples. A matching posture has to remain stable for 20 seconds before the menu app asks the root daemon to use the same `pmset sleepnow` mechanism as the normal sleep lock. If you wake the Mac while staying in the matched posture, the detector can trigger again.
+
+The raw motion stream is not written to disk or sent anywhere. Only the small calibrated gravity vectors are saved. Bed Guard does not use the microphone or camera.
+
+This is deliberately posture detection rather than pretending AirPods know where the bed is. Sitting perfectly upright on the bed can look like sitting upright at a desk, so for that case a future optional BLE/pressure sensor can be fused with the AirPods signal. For normal reclined laptop-in-bed use, calibration gives Deadlock a distinct signal without adding a camera.
+
 ### Emergency sleep access
 
 If the sleep lock is already enforcing and you genuinely need the Mac immediately, open Deadlock and use **Emergency access now…**. It suspends only sleep enforcement for up to two hours, does not edit the saved schedule, leaves the Porn Blocker and distraction blocking alone, and automatically restores sleep enforcement when it expires.

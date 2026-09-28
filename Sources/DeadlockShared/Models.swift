@@ -178,6 +178,43 @@ public struct DistractionSettings: Codable, Hashable, Sendable {
     }
 }
 
+public struct BedGuardVector: Codable, Hashable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var z: Double
+
+    public init(x: Double, y: Double, z: Double) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+}
+
+public struct BedGuardSettings: Codable, Hashable, Sendable {
+    public var enabled: Bool
+    public var poses: [BedGuardVector]
+    /// Maximum angular difference between the live gravity vector and a saved bed pose.
+    public var matchAngleDegrees: Double
+    /// A pose has to stay matched for this long before the daemon sleeps the Mac.
+    public var sustainSeconds: Double
+
+    public init(
+        enabled: Bool = false,
+        poses: [BedGuardVector] = [],
+        matchAngleDegrees: Double = 26,
+        sustainSeconds: Double = 20
+    ) {
+        self.enabled = enabled
+        self.poses = poses
+        self.matchAngleDegrees = matchAngleDegrees
+        self.sustainSeconds = sustainSeconds
+    }
+
+    public static var defaultSettings: BedGuardSettings {
+        BedGuardSettings()
+    }
+}
+
 public struct PendingConfig: Codable, Hashable, Sendable {
     public var config: LockConfig
     public var activatesAt: Date
@@ -220,6 +257,10 @@ public struct PersistedState: Codable, Hashable, Sendable {
     public var distractionBlockUntil: Date?
     public var distractionSettings: DistractionSettings?
 
+    /// AirPods posture sensing is configured by the user app but enforced by the root daemon.
+    /// Optional keeps older signed state files decodable after upgrading.
+    public var bedGuardSettings: BedGuardSettings?
+
     /// Single-use dated distraction exception slot. The legacy field names are
     /// preserved so existing persisted state remains decodable across upgrades.
     public var discordOneOffAllowedUntil: Date?
@@ -244,6 +285,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         emergencyAccessTriggeredAt: Date? = nil,
         distractionBlockUntil: Date? = nil,
         distractionSettings: DistractionSettings? = nil,
+        bedGuardSettings: BedGuardSettings? = nil,
         discordOneOffAllowedUntil: Date? = nil,
         discordOneOffUsed: Bool? = nil,
         discordSetupExceptionUsed: Bool? = nil
@@ -264,6 +306,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.emergencyAccessTriggeredAt = emergencyAccessTriggeredAt
         self.distractionBlockUntil = distractionBlockUntil
         self.distractionSettings = distractionSettings
+        self.bedGuardSettings = bedGuardSettings
         self.discordOneOffAllowedUntil = discordOneOffAllowedUntil
         self.discordOneOffUsed = discordOneOffUsed
         self.discordSetupExceptionUsed = discordSetupExceptionUsed
@@ -391,6 +434,8 @@ public enum IPCCommand: String, Codable, Sendable {
     case allowDiscordOneOff
     case setPornSettings
     case setDistractionSettings
+    case setBedGuardSettings
+    case bedGuardTrigger
     case lockSettings
     case clearAccountability
     case emergencyImmediate
@@ -406,6 +451,7 @@ public struct IPCRequest: Codable, Sendable {
     public var config: LockConfig?
     public var pornSettings: PornSettings?
     public var distractionSettings: DistractionSettings?
+    public var bedGuardSettings: BedGuardSettings?
     public var text: String?
     public var seconds: Double?
     /// Used by custom-duration UI. Existing clients can omit it.
@@ -416,6 +462,7 @@ public struct IPCRequest: Codable, Sendable {
         config: LockConfig? = nil,
         pornSettings: PornSettings? = nil,
         distractionSettings: DistractionSettings? = nil,
+        bedGuardSettings: BedGuardSettings? = nil,
         text: String? = nil,
         seconds: Double? = nil,
         date: Date? = nil
@@ -424,6 +471,7 @@ public struct IPCRequest: Codable, Sendable {
         self.config = config
         self.pornSettings = pornSettings
         self.distractionSettings = distractionSettings
+        self.bedGuardSettings = bedGuardSettings
         self.text = text
         self.seconds = seconds
         self.date = date
@@ -437,6 +485,7 @@ public struct IPCResponse: Codable, Sendable {
     public var config: LockConfig?
     public var pornSettings: PornSettings?
     public var distractionSettings: DistractionSettings?
+    public var bedGuardSettings: BedGuardSettings?
     public var challenge: String?
 
     public init(
@@ -446,6 +495,7 @@ public struct IPCResponse: Codable, Sendable {
         config: LockConfig? = nil,
         pornSettings: PornSettings? = nil,
         distractionSettings: DistractionSettings? = nil,
+        bedGuardSettings: BedGuardSettings? = nil,
         challenge: String? = nil
     ) {
         self.ok = ok
@@ -454,6 +504,7 @@ public struct IPCResponse: Codable, Sendable {
         self.config = config
         self.pornSettings = pornSettings
         self.distractionSettings = distractionSettings
+        self.bedGuardSettings = bedGuardSettings
         self.challenge = challenge
     }
 }
