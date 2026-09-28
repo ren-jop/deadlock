@@ -116,9 +116,7 @@ final class DeadlockDaemon {
         if parts.year == 2026, parts.month == 9, parts.day == 27 {
             return "discord.com"
         }
-        if parts.year == 2026, parts.month == 9, parts.day == 28 {
-            return "instagram.com"
-        }
+
         return nil
     }
 
@@ -339,83 +337,6 @@ final class DeadlockDaemon {
                 return IPCResponse(
                     ok: false,
                     message: "Could not save the one-off Discord exception: \(error)",
-                    status: status()
-                )
-            }
-
-        case .allowInstagramOneOff:
-            let now = Date()
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = .current
-            let parts = calendar.dateComponents(
-                [.year, .month, .day],
-                from: now
-            )
-
-            guard parts.year == 2026,
-                  parts.month == 9,
-                  parts.day == 28
-            else {
-                return IPCResponse(
-                    ok: false,
-                    message: "This one-off Instagram exception is only valid on 28 Sep 2026.",
-                    status: status()
-                )
-            }
-
-            if store.state.discordOneOffUsed == true,
-               let priorUntil = store.state.discordOneOffAllowedUntil,
-               priorUntil > now {
-                return IPCResponse(
-                    ok: false,
-                    message: "The one-off distraction exception is already active and cannot be extended.",
-                    status: status()
-                )
-            }
-
-            let startOfDay = calendar.startOfDay(for: now)
-            guard let until = calendar.date(
-                byAdding: .day,
-                value: 1,
-                to: startOfDay
-            ) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not calculate local midnight.",
-                    status: status()
-                )
-            }
-
-            let configured = PolicyEngine.normalizedDomains(
-                effectiveDistractionSettings().blockedDomains
-            )
-            guard configured.contains(where: {
-                $0 == "instagram.com"
-                    || $0.hasSuffix(".instagram.com")
-            }) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Instagram is not currently in the distraction block list.",
-                    status: status()
-                )
-            }
-
-            do {
-                try store.mutate { state in
-                    state.discordOneOffAllowedUntil = until
-                    state.discordOneOffUsed = true
-                }
-                applyWebProtectionIfNeeded(force: true)
-                reschedule()
-                return IPCResponse(
-                    ok: true,
-                    message: "Instagram is allowed until local midnight tonight. This exception cannot be extended and is invalid after today.",
-                    status: status()
-                )
-            } catch {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not save the one-off Instagram exception: \(error)",
                     status: status()
                 )
             }
