@@ -106,7 +106,7 @@ final class DeadlockDaemon {
     private func oneOffDistractionDomain(
         _ now: Date = Date()
     ) -> String? {
-        guard store.state.discordOneOffUsed == true,
+        guard store.state.discordSetupExceptionUsed == true,
               let until = store.state.discordOneOffAllowedUntil,
               until > now
         else {
@@ -117,7 +117,7 @@ final class DeadlockDaemon {
         calendar.timeZone = .current
         let parts = calendar.dateComponents([.year, .month, .day], from: now)
 
-        if parts.year == 2026, parts.month == 9, parts.day == 27 {
+        if parts.year == 2026, parts.month == 9, parts.day == 29 {
             return "discord.com"
         }
 
@@ -281,25 +281,25 @@ final class DeadlockDaemon {
 
             guard parts.year == 2026,
                   parts.month == 9,
-                  parts.day == 27
+                  parts.day == 29
             else {
                 return IPCResponse(
                     ok: false,
-                    message: "This one-off Discord exception is only valid on 27 Sep 2026.",
+                    message: "This setup-only Discord exception is only valid on 29 Sep 2026.",
                     status: status()
                 )
             }
 
-            guard store.state.discordOneOffUsed != true else {
+            guard store.state.discordSetupExceptionUsed != true else {
                 return IPCResponse(
                     ok: false,
-                    message: "The one-off Discord exception has already been used.",
+                    message: "The setup-only Discord exception has already been used and cannot be renewed.",
                     status: status()
                 )
             }
 
             let startOfDay = calendar.startOfDay(for: now)
-            guard let until = calendar.date(
+            guard let midnight = calendar.date(
                 byAdding: .day,
                 value: 1,
                 to: startOfDay
@@ -310,6 +310,7 @@ final class DeadlockDaemon {
                     status: status()
                 )
             }
+            let until = min(now.addingTimeInterval(45 * 60), midnight)
 
             let configured = PolicyEngine.normalizedDomains(
                 effectiveDistractionSettings().blockedDomains
@@ -328,19 +329,19 @@ final class DeadlockDaemon {
             do {
                 try store.mutate { state in
                     state.discordOneOffAllowedUntil = until
-                    state.discordOneOffUsed = true
+                    state.discordSetupExceptionUsed = true
                 }
                 applyWebProtectionIfNeeded(force: true)
                 reschedule()
                 return IPCResponse(
                     ok: true,
-                    message: "Discord is allowed until local midnight tonight. This one-off exception is permanently consumed and cannot be extended or used again.",
+                    message: "Discord is allowed for 45 minutes for setup. This one-off exception is consumed immediately and cannot be extended or used again.",
                     status: status()
                 )
             } catch {
                 return IPCResponse(
                     ok: false,
-                    message: "Could not save the one-off Discord exception: \(error)",
+                    message: "Could not save the setup-only Discord exception: \(error)",
                     status: status()
                 )
             }
@@ -401,22 +402,37 @@ final class DeadlockDaemon {
                 return IPCResponse(ok: false, message: "Missing Porn Blocker settings.", status: status(), pornSettings: effectivePornSettings())
             }
             let now = Date()
-            if let until = store.state.settingsLockedUntil, until > now {
-                return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), pornSettings: effectivePornSettings())
-            }
-            if pornProtectionActive(now) {
-                return IPCResponse(ok: false, message: "Porn Blocker settings cannot be changed while a mandatory/manual protection window is active.", status: status(), pornSettings: effectivePornSettings())
-            }
             let existing = effectivePornSettings()
+            new.accountabilityRecipient = String(new.accountabilityRecipient.trimmingCharacters(in: .whitespacesAndNewlines).prefix(256))
+
+            // The accountability contact is not a protection setting. Let the user
+            // correct or add that recipient at any time without making the sleep,
+            // porn, or distraction policies weaker.
+            let recipientOnlyChange =
+                new.scheduleEnabled == existing.scheduleEnabled
+                && new.days == existing.days
+                && new.editWeekday == existing.editWeekday
+                && new.accountabilityEnabled == existing.accountabilityEnabled
+                && new.motivationalOverlayEnabled == existing.motivationalOverlayEnabled
+                && new.setupCompleted == existing.setupCompleted
+
+            if let until = store.state.settingsLockedUntil, until > now, !recipientOnlyChange {
+                return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), pornSettings: existing)
+            }
+            if pornProtectionActive(now), !recipientOnlyChange {
+                return IPCResponse(ok: false, message: "Porn Blocker settings cannot be changed while a mandatory/manual protection window is active.", status: status(), pornSettings: existing)
+            }
             let firstSetup = existing.setupCompleted != true
             let weekday = Calendar.current.component(.weekday, from: now)
-            if !firstSetup && weekday != existing.editWeekday {
+            if !firstSetup && weekday != existing.editWeekday && !recipientOnlyChange {
                 return IPCResponse(ok: false, message: "Porn Blocker schedule can only be edited on \(weekdayName(existing.editWeekday)).", status: status(), pornSettings: existing)
             }
+
             new.editWeekday = min(7, max(1, new.editWeekday))
-            new.accountabilityRecipient = String(new.accountabilityRecipient.trimmingCharacters(in: .whitespacesAndNewlines).prefix(256))
             new.days = PolicyEngine.normalizedDays(new.days)
-            new.setupCompleted = true
+            if !recipientOnlyChange {
+                new.setupCompleted = true
+            }
             do {
                 try store.mutate { state in
                     state.pornSettings = new
@@ -424,7 +440,10 @@ final class DeadlockDaemon {
                 }
                 applyWebProtectionIfNeeded(force: true)
                 reschedule()
-                return IPCResponse(ok: true, message: "Porn Blocker settings saved. Future edits are only allowed on \(weekdayName(new.editWeekday)).", status: status(), pornSettings: new)
+                let savedMessage = recipientOnlyChange
+                    ? "Accountability friend saved. Protection settings were not changed."
+                    : "Porn Blocker settings saved. Future edits are only allowed on \(weekdayName(new.editWeekday))."
+                return IPCResponse(ok: true, message: savedMessage, status: status(), pornSettings: new)
             } catch {
                 return IPCResponse(ok: false, message: "Could not save Porn Blocker settings: \(error)")
             }
@@ -495,6 +514,7 @@ final class DeadlockDaemon {
                 try store.mutate { state in
                     state.emergencyImmediateUsedForStart = active.start
                     state.emergencyOverrideUntil = until
+                    state.emergencyAccessTriggeredAt = now
                 }
             } catch {
                 return IPCResponse(
@@ -535,7 +555,10 @@ final class DeadlockDaemon {
             }
             emergencyOverrideUntil = Date().addingTimeInterval(2 * 3600)
             if let until = emergencyOverrideUntil {
-                try? store.mutate { $0.emergencyOverrideUntil = until }
+                try? store.mutate { state in
+                    state.emergencyOverrideUntil = until
+                    state.emergencyAccessTriggeredAt = Date()
+                }
             }
             emergencyReadyAt = nil
             reschedule()
@@ -685,6 +708,7 @@ final class DeadlockDaemon {
             emergencyReadyAt: emergencyReadyAt,
             emergencyOverrideUntil: emergencyOverrideUntil,
             emergencyImmediateAvailable: emergencyImmediateAvailable,
+            emergencyAccessTriggeredAt: store.state.emergencyAccessTriggeredAt,
             uninstallReadyAt: uninstallReadyDate(),
             testWindowStart: testInterval?.start,
             testWindowEnd: testInterval?.end,
