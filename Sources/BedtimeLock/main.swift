@@ -1261,7 +1261,7 @@ struct BedtimeLockApp: App {
 func runCLI() -> Never {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|discord-tonight-once|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
+        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|discord-setup-once|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
         exit(2)
     }
 
@@ -1289,7 +1289,7 @@ func runCLI() -> Never {
                 seconds: seconds
             )
 
-        case "discord-tonight-once":
+        case "discord-setup-once", "discord-tonight-once":
             request = IPCRequest(
                 command: .allowDiscordOneOff
             )
