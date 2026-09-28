@@ -195,6 +195,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
     /// The sleep-window start that already consumed instant emergency access.
     /// Persisting this prevents daemon restarts from granting a second use in the same window.
     public var emergencyImmediateUsedForStart: Date?
+    /// Active sleep-only emergency override. Persisted so daemon restarts do not cancel it.
+    public var emergencyOverrideUntil: Date?
     public var updatedAt: Date
 
     /// Manual Porn Blocker extension. Scheduled windows are separate.
@@ -224,6 +226,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         pending: PendingConfig? = nil,
         uninstallRequestedAt: Date? = nil,
         emergencyImmediateUsedForStart: Date? = nil,
+        emergencyOverrideUntil: Date? = nil,
         updatedAt: Date = Date(),
         pornBlockerUntil: Date? = nil,
         settingsLockedUntil: Date? = nil,
@@ -241,6 +244,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.pending = pending
         self.uninstallRequestedAt = uninstallRequestedAt
         self.emergencyImmediateUsedForStart = emergencyImmediateUsedForStart
+        self.emergencyOverrideUntil = emergencyOverrideUntil
         self.updatedAt = updatedAt
         self.pornBlockerUntil = pornBlockerUntil
         self.settingsLockedUntil = settingsLockedUntil
