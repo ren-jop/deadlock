@@ -92,51 +92,58 @@ final class DeadlockDaemon {
         store.state.pornSettings ?? .defaultSettings
     }
 
+    private func isAlwaysAllowedDistractionDomain(_ domain: String) -> Bool {
+        let normalized = domain
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return normalized == "discord.com"
+            || normalized.hasSuffix(".discord.com")
+    }
+
+    private func sanitizedDistractionSettings(
+        _ settings: DistractionSettings
+    ) -> DistractionSettings {
+        var sanitized = settings
+        sanitized.blockedDomains = PolicyEngine.normalizedDomains(
+            settings.blockedDomains
+        ).filter { !isAlwaysAllowedDistractionDomain($0) }
+        return sanitized
+    }
+
     private func ensureDistractionSettings() {
-        guard store.state.distractionSettings == nil else { return }
+        let existing = store.state.distractionSettings ?? .defaultSettings
+        let sanitized = sanitizedDistractionSettings(existing)
+
+        // Discord is intentionally treated as a productivity service. Migrate
+        // older installs by removing any saved Discord block and any obsolete
+        // temporary-exception state.
+        guard store.state.distractionSettings != sanitized
+                || store.state.discordOneOffAllowedUntil != nil
+                || store.state.discordSetupExceptionUsed != nil
+                || store.state.discordOneOffUsed != nil
+        else { return }
+
         try? store.mutate { state in
-            state.distractionSettings = .defaultSettings
+            state.distractionSettings = sanitized
+            state.discordOneOffAllowedUntil = nil
+            state.discordSetupExceptionUsed = nil
+            state.discordOneOffUsed = nil
         }
     }
 
     private func effectiveDistractionSettings() -> DistractionSettings {
-        store.state.distractionSettings ?? .defaultSettings
-    }
-
-    private func oneOffDistractionDomain(
-        _ now: Date = Date()
-    ) -> String? {
-        guard store.state.discordSetupExceptionUsed == true,
-              let until = store.state.discordOneOffAllowedUntil,
-              until > now
-        else {
-            return nil
-        }
-
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .current
-        let parts = calendar.dateComponents([.year, .month, .day], from: now)
-
-        if parts.year == 2026, parts.month == 9, parts.day == 29 {
-            return "discord.com"
-        }
-
-        return nil
+        sanitizedDistractionSettings(
+            store.state.distractionSettings ?? .defaultSettings
+        )
     }
 
     private func effectiveDistractionDomains(
         _ now: Date = Date()
     ) -> [String] {
-        let configured = PolicyEngine.normalizedDomains(
+        PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
-        )
-        guard let allowedDomain = oneOffDistractionDomain(now) else {
-            return configured
-        }
-        return configured.filter { blocked in
-            blocked != allowedDomain
-                && !blocked.hasSuffix(".\(allowedDomain)")
-        }
+        ).filter { !isAlwaysAllowedDistractionDomain($0) }
     }
 
     private func acceptLoop() {
@@ -271,80 +278,16 @@ final class DeadlockDaemon {
             }
 
         case .allowDiscordOneOff:
-            let now = Date()
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = .current
-            let parts = calendar.dateComponents(
-                [.year, .month, .day],
-                from: now
+            // Kept for compatibility with older clients. Discord is now an
+            // always-allowed productivity service, so no exception is needed.
+            ensureDistractionSettings()
+            applyWebProtectionIfNeeded(force: true)
+            return IPCResponse(
+                ok: true,
+                message: "Discord is permanently allowed. No temporary exception is needed.",
+                status: status(),
+                distractionSettings: effectiveDistractionSettings()
             )
-
-            guard parts.year == 2026,
-                  parts.month == 9,
-                  parts.day == 29
-            else {
-                return IPCResponse(
-                    ok: false,
-                    message: "This setup-only Discord exception is only valid on 29 Sep 2026.",
-                    status: status()
-                )
-            }
-
-            guard store.state.discordSetupExceptionUsed != true else {
-                return IPCResponse(
-                    ok: false,
-                    message: "The setup-only Discord exception has already been used and cannot be renewed.",
-                    status: status()
-                )
-            }
-
-            let startOfDay = calendar.startOfDay(for: now)
-            guard let midnight = calendar.date(
-                byAdding: .day,
-                value: 1,
-                to: startOfDay
-            ) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not calculate local midnight.",
-                    status: status()
-                )
-            }
-            let until = min(now.addingTimeInterval(45 * 60), midnight)
-
-            let configured = PolicyEngine.normalizedDomains(
-                effectiveDistractionSettings().blockedDomains
-            )
-            guard configured.contains(where: {
-                $0 == "discord.com"
-                    || $0.hasSuffix(".discord.com")
-            }) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Discord is not currently in the distraction block list.",
-                    status: status()
-                )
-            }
-
-            do {
-                try store.mutate { state in
-                    state.discordOneOffAllowedUntil = until
-                    state.discordSetupExceptionUsed = true
-                }
-                applyWebProtectionIfNeeded(force: true)
-                reschedule()
-                return IPCResponse(
-                    ok: true,
-                    message: "Discord is allowed for 45 minutes for setup. This one-off exception is consumed immediately and cannot be extended or used again.",
-                    status: status()
-                )
-            } catch {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not save the setup-only Discord exception: \(error)",
-                    status: status()
-                )
-            }
 
         case .setDistractionSettings:
             guard var new = req.distractionSettings else {
@@ -374,7 +317,9 @@ final class DeadlockDaemon {
             }
 
             new.days = PolicyEngine.normalizedDays(new.days)
-            new.blockedDomains = PolicyEngine.normalizedDomains(new.blockedDomains)
+            new.blockedDomains = PolicyEngine.normalizedDomains(
+                new.blockedDomains
+            ).filter { !isAlwaysAllowedDistractionDomain($0) }
             new.setupCompleted = true
 
             do {
@@ -740,10 +685,7 @@ final class DeadlockDaemon {
             distractionScheduledEnd: scheduledDistraction?.end,
             distractionScheduleNextStart: nextDistraction?.start,
             distractionSettingsEditable: distractionSettingsEditable(now),
-            discordOneOffAllowedUntil:
-                oneOffDistractionDomain(now) != nil
-                    ? store.state.discordOneOffAllowedUntil
-                    : nil
+            discordOneOffAllowedUntil: nil
         )
     }
 
