@@ -334,6 +334,28 @@ final class AppState: ObservableObject {
         updateAccountabilityWindow()
     }
 
+    func activateEmergencyNow() {
+        do {
+            let response = try UnixSocketClient.request(IPCRequest(command: .emergencyImmediate))
+            message = response.message
+            if let status = response.status { self.status = status }
+            updateCountdownWindow()
+        } catch { message = String(describing: error) }
+    }
+
+    func confirmEmergencyNow() {
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Start emergency sleep access?"
+        alert.informativeText = "This immediately suspends only sleep enforcement for up to 2 hours. Your saved schedule and other blockers stay unchanged. Instant access can only be used once in the current sleep window."
+        alert.addButton(withTitle: "Start emergency access")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            activateEmergencyNow()
+        }
+    }
+
     func beginEmergency() {
         do {
             let response = try UnixSocketClient.request(IPCRequest(command: .emergencyBegin))
@@ -937,11 +959,43 @@ struct ContentView: View {
                     }.padding(4)
                 }
 
-                DisclosureGroup("Emergency sleep override") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("A real verified $1 payment would require an external payment processor/server, so this build uses high-friction accountability instead: it notifies your configured friend, requires a 200-character challenge, then a 30-minute wait.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("Start emergency process") { state.beginEmergency() }
+                DisclosureGroup("Emergency sleep access") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let until = state.status.emergencyOverrideUntil,
+                           until > Date() {
+                            Label("Emergency sleep access is active", systemImage: "exclamationmark.triangle.fill")
+                                .font(.headline)
+                            RemainingTimeView(until: until)
+                            Text("Your saved sleep schedule and other blockers are unchanged. Sleep enforcement resumes automatically when this expires.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("For a genuine emergency, this immediately suspends only the sleep lock for up to 2 hours. It is available only while the sleep lock is actively enforcing and can be used once per sleep window.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Button("Emergency access now…") {
+                                state.confirmEmergencyNow()
+                            }
+                            .disabled(!state.status.emergencyImmediateAvailable)
+
+                            if !state.status.emergencyImmediateAvailable {
+                                Text(state.status.active
+                                    ? "Instant emergency access has already been used for this sleep window."
+                                    : "Instant emergency access becomes available when the sleep lock is actively enforcing.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Divider()
+
+                        Text("Deliberate override")
+                            .font(.headline)
+                        Text("If you need another override in the same sleep window, the slower high-friction path remains available: type the challenge exactly and wait 30 minutes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Start deliberate override") { state.beginEmergency() }
                         if !state.emergencyChallenge.isEmpty {
                             Text(state.emergencyChallenge)
                                 .font(.system(.caption, design: .monospaced))
@@ -1032,6 +1086,10 @@ struct BedtimeLockApp: App {
 
             if state.status.active {
                 Label("Sleep lock active", systemImage: "moon.zzz.fill")
+                Button("Emergency access now…") {
+                    state.confirmEmergencyNow()
+                }
+                .disabled(!state.status.emergencyImmediateAvailable)
             }
             if state.status.pornBlockerActive {
                 Label("Porn Blocker active", systemImage: "shield.fill")
@@ -1059,7 +1117,7 @@ struct BedtimeLockApp: App {
 func runCLI() -> Never {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|discord-tonight-once|uninstall-request|uninstall-status> [args]\n", stderr)
+        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|discord-tonight-once|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
         exit(2)
     }
 
@@ -1091,6 +1149,9 @@ func runCLI() -> Never {
             request = IPCRequest(
                 command: .allowDiscordOneOff
             )
+
+        case "emergency-now":
+            request = IPCRequest(command: .emergencyImmediate)
 
         case "uninstall-request":
             request = IPCRequest(command: .uninstallRequest)

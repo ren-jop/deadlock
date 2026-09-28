@@ -192,6 +192,11 @@ public struct PersistedState: Codable, Hashable, Sendable {
     public var current: LockConfig
     public var pending: PendingConfig?
     public var uninstallRequestedAt: Date?
+    /// The sleep-window start that already consumed instant emergency access.
+    /// Persisting this prevents daemon restarts from granting a second use in the same window.
+    public var emergencyImmediateUsedForStart: Date?
+    /// Active sleep-only emergency override. Persisted so daemon restarts do not cancel it.
+    public var emergencyOverrideUntil: Date?
     public var updatedAt: Date
 
     /// Manual Porn Blocker extension. Scheduled windows are separate.
@@ -220,6 +225,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
         current: LockConfig = .defaultConfig,
         pending: PendingConfig? = nil,
         uninstallRequestedAt: Date? = nil,
+        emergencyImmediateUsedForStart: Date? = nil,
+        emergencyOverrideUntil: Date? = nil,
         updatedAt: Date = Date(),
         pornBlockerUntil: Date? = nil,
         settingsLockedUntil: Date? = nil,
@@ -236,6 +243,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.current = current
         self.pending = pending
         self.uninstallRequestedAt = uninstallRequestedAt
+        self.emergencyImmediateUsedForStart = emergencyImmediateUsedForStart
+        self.emergencyOverrideUntil = emergencyOverrideUntil
         self.updatedAt = updatedAt
         self.pornBlockerUntil = pornBlockerUntil
         self.settingsLockedUntil = settingsLockedUntil
@@ -270,6 +279,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
     public var configChangesBlocked: Bool
     public var emergencyReadyAt: Date?
     public var emergencyOverrideUntil: Date?
+    public var emergencyImmediateAvailable: Bool
     public var uninstallReadyAt: Date?
     public var testWindowStart: Date?
     public var testWindowEnd: Date?
@@ -304,6 +314,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         configChangesBlocked: Bool = false,
         emergencyReadyAt: Date? = nil,
         emergencyOverrideUntil: Date? = nil,
+        emergencyImmediateAvailable: Bool = false,
         uninstallReadyAt: Date? = nil,
         testWindowStart: Date? = nil,
         testWindowEnd: Date? = nil,
@@ -333,6 +344,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         self.configChangesBlocked = configChangesBlocked
         self.emergencyReadyAt = emergencyReadyAt
         self.emergencyOverrideUntil = emergencyOverrideUntil
+        self.emergencyImmediateAvailable = emergencyImmediateAvailable
         self.uninstallReadyAt = uninstallReadyAt
         self.testWindowStart = testWindowStart
         self.testWindowEnd = testWindowEnd
@@ -368,6 +380,7 @@ public enum IPCCommand: String, Codable, Sendable {
     case setDistractionSettings
     case lockSettings
     case clearAccountability
+    case emergencyImmediate
     case emergencyBegin
     case emergencySubmit
     case emergencyActivate

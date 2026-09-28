@@ -149,8 +149,9 @@ case "${1:-}" in
   web) web ;;
   doctor) doctor ;;
   discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
+  emergency-now) "$APP/Contents/MacOS/deadlock" --ipc emergency-now ;;
   *)
-    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once}"
+    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-tonight-once|emergency-now}"
     exit 1
     ;;
 esac
