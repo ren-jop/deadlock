@@ -402,22 +402,37 @@ final class DeadlockDaemon {
                 return IPCResponse(ok: false, message: "Missing Porn Blocker settings.", status: status(), pornSettings: effectivePornSettings())
             }
             let now = Date()
-            if let until = store.state.settingsLockedUntil, until > now {
-                return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), pornSettings: effectivePornSettings())
-            }
-            if pornProtectionActive(now) {
-                return IPCResponse(ok: false, message: "Porn Blocker settings cannot be changed while a mandatory/manual protection window is active.", status: status(), pornSettings: effectivePornSettings())
-            }
             let existing = effectivePornSettings()
+            new.accountabilityRecipient = String(new.accountabilityRecipient.trimmingCharacters(in: .whitespacesAndNewlines).prefix(256))
+
+            // The accountability contact is not a protection setting. Let the user
+            // correct or add that recipient at any time without making the sleep,
+            // porn, or distraction policies weaker.
+            let recipientOnlyChange =
+                new.scheduleEnabled == existing.scheduleEnabled
+                && new.days == existing.days
+                && new.editWeekday == existing.editWeekday
+                && new.accountabilityEnabled == existing.accountabilityEnabled
+                && new.motivationalOverlayEnabled == existing.motivationalOverlayEnabled
+                && new.setupCompleted == existing.setupCompleted
+
+            if let until = store.state.settingsLockedUntil, until > now, !recipientOnlyChange {
+                return IPCResponse(ok: false, message: "Settings are locked until \(ISO8601DateFormatter().string(from: until)).", status: status(), pornSettings: existing)
+            }
+            if pornProtectionActive(now), !recipientOnlyChange {
+                return IPCResponse(ok: false, message: "Porn Blocker settings cannot be changed while a mandatory/manual protection window is active.", status: status(), pornSettings: existing)
+            }
             let firstSetup = existing.setupCompleted != true
             let weekday = Calendar.current.component(.weekday, from: now)
-            if !firstSetup && weekday != existing.editWeekday {
+            if !firstSetup && weekday != existing.editWeekday && !recipientOnlyChange {
                 return IPCResponse(ok: false, message: "Porn Blocker schedule can only be edited on \(weekdayName(existing.editWeekday)).", status: status(), pornSettings: existing)
             }
+
             new.editWeekday = min(7, max(1, new.editWeekday))
-            new.accountabilityRecipient = String(new.accountabilityRecipient.trimmingCharacters(in: .whitespacesAndNewlines).prefix(256))
             new.days = PolicyEngine.normalizedDays(new.days)
-            new.setupCompleted = true
+            if !recipientOnlyChange {
+                new.setupCompleted = true
+            }
             do {
                 try store.mutate { state in
                     state.pornSettings = new
@@ -425,7 +440,10 @@ final class DeadlockDaemon {
                 }
                 applyWebProtectionIfNeeded(force: true)
                 reschedule()
-                return IPCResponse(ok: true, message: "Porn Blocker settings saved. Future edits are only allowed on \(weekdayName(new.editWeekday)).", status: status(), pornSettings: new)
+                let savedMessage = recipientOnlyChange
+                    ? "Accountability friend saved. Protection settings were not changed."
+                    : "Porn Blocker settings saved. Future edits are only allowed on \(weekdayName(new.editWeekday))."
+                return IPCResponse(ok: true, message: savedMessage, status: status(), pornSettings: new)
             } catch {
                 return IPCResponse(ok: false, message: "Could not save Porn Blocker settings: \(error)")
             }
