@@ -30,6 +30,7 @@ final class DeadlockDaemon {
 
     init() throws {
         store = try ConfigStore()
+        emergencyOverrideUntil = store.state.emergencyOverrideUntil
         server = try UnixSocketServer()
     }
 
@@ -490,6 +491,7 @@ final class DeadlockDaemon {
             do {
                 try store.mutate { state in
                     state.emergencyImmediateUsedForStart = active.start
+                    state.emergencyOverrideUntil = until
                 }
             } catch {
                 return IPCResponse(
@@ -529,6 +531,9 @@ final class DeadlockDaemon {
                 return IPCResponse(ok: false, message: "Emergency wait has not finished.", status: status())
             }
             emergencyOverrideUntil = Date().addingTimeInterval(2 * 3600)
+            if let until = emergencyOverrideUntil {
+                try? store.mutate { $0.emergencyOverrideUntil = until }
+            }
             emergencyReadyAt = nil
             reschedule()
             return IPCResponse(ok: true, message: "Emergency sleep override active for 2 hours. Porn Blocker schedules are unaffected.", status: status())
@@ -763,7 +768,10 @@ final class DeadlockDaemon {
             self.applyPendingIfDue()
             let now = Date()
             if let test = self.testInterval, now >= test.end { self.testInterval = nil }
-            if let until = self.emergencyOverrideUntil, now >= until { self.emergencyOverrideUntil = nil }
+            if let until = self.emergencyOverrideUntil, now >= until {
+                self.emergencyOverrideUntil = nil
+                try? self.store.mutate { $0.emergencyOverrideUntil = nil }
+            }
             if let manual = self.store.state.pornBlockerUntil, now >= manual {
                 try? self.store.mutate { $0.pornBlockerUntil = nil }
             }
