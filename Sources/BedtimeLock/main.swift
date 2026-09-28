@@ -414,23 +414,6 @@ final class AppState: ObservableObject {
         } catch { message = String(describing: error) }
     }
 
-    func allowDiscordSetupException() {
-        do {
-            let response = try UnixSocketClient.request(IPCRequest(command: .allowDiscordOneOff))
-            message = response.message
-            if let status = response.status { self.status = status }
-        } catch {
-            message = String(describing: error)
-        }
-    }
-
-    func discordIsConfigured() -> Bool {
-        distractionSettings.blockedDomains.contains { value in
-            let host = normalizedDistractionDomain(value)
-            return host == "discord.com" || host.hasSuffix(".discord.com")
-        }
-    }
-
     func menuText(now: Date = Date()) -> String {
         if status.active { return "Sleep locked" }
         if status.pornBlockerActive { return "Porn Blocker active" }
@@ -855,23 +838,9 @@ struct ContentView: View {
                                 )
                         }
 
-                        if state.discordIsConfigured() {
-                            HStack {
-                                if let until = state.status.discordOneOffAllowedUntil,
-                                   until > Date() {
-                                    Label("Discord setup access active", systemImage: "checkmark.circle.fill")
-                                    RemainingTimeView(until: until)
-                                } else {
-                                    Button("Allow Discord for 45 min — setup only") {
-                                        state.allowDiscordSetupException()
-                                    }
-                                    Text("One use on 29 Sep only; cannot be extended.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                        }
+                        Label("Discord is always allowed", systemImage: "checkmark.shield")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
                         HStack {
                             Picker(
@@ -1261,7 +1230,7 @@ struct BedtimeLockApp: App {
 func runCLI() -> Never {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|discord-setup-once|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
+        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
         exit(2)
     }
 
@@ -1287,11 +1256,6 @@ func runCLI() -> Never {
             request = IPCRequest(
                 command: .startDistractionBlock,
                 seconds: seconds
-            )
-
-        case "discord-setup-once", "discord-tonight-once":
-            request = IPCRequest(
-                command: .allowDiscordOneOff
             )
 
         case "emergency-now":
