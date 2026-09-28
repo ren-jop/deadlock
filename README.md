@@ -30,6 +30,18 @@ The installer builds locally, installs the app and privileged components, and co
 - Provides a watchdog and recovery path.
 - Exposes status and web diagnostics through `deadlockctl`.
 
+### Emergency sleep access
+
+If the sleep lock is already enforcing and you genuinely need the Mac immediately, open Deadlock and use **Emergency access now…**. It suspends only sleep enforcement for up to two hours, does not edit the saved schedule, leaves the Porn Blocker and distraction blocking alone, and automatically restores sleep enforcement when it expires.
+
+Instant emergency access is limited to one use per sleep window and that use is stored by the root daemon, so restarting the daemon does not grant another instant use or cancel an active emergency window. If the menu UI is inconvenient, the installed CLI has the same path:
+
+```bash
+./deadlockctl emergency-now
+```
+
+A separate deliberate override remains available for a second override in the same sleep window; it keeps the existing 200-character challenge and 30-minute delay.
+
 ### YouTube
 
 YouTube is handled differently from other blocked domains.
