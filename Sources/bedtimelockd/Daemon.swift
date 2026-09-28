@@ -39,7 +39,10 @@ final class DeadlockDaemon {
         ensureDistractionSettings()
 
         powerMonitor = PowerMonitor { [weak self] in
-            self?.queue.asyncAfter(deadline: .now() + 2) { self?.evaluate(reason: "wake") }
+            // Give the menu app a brief chance to present the explicit emergency
+            // confirmation after a real wake. If the user does nothing, normal
+            // sleep enforcement resumes after this short grace period.
+            self?.queue.asyncAfter(deadline: .now() + 8) { self?.evaluate(reason: "wake") }
         }
         powerMonitor?.start()
 
