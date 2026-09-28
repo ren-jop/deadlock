@@ -106,6 +106,8 @@ The Distractions panel includes grouped quick presets for common distracting sit
 
 Each site can be toggled individually, each group has Add all / Remove all, and custom domains can still be mixed into the same block list. Presets do not create a second rules system; they edit the normal Deadlock distraction-domain list.
 
+Discord is intentionally treated as an always-allowed productivity service. Existing saved Discord blocks are removed automatically when the daemon starts, and attempts to add `discord.com` or its subdomains to the distraction list are ignored.
+
 ## How it works
 
 ```text
