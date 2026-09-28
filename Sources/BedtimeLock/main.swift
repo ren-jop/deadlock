@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     private var accountabilityWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var accountabilityAttemptedEvent: Date?
+    private var emergencyMessageAttemptedEvent: Date?
     private var emergencyPromptVisible = false
 
     private lazy var browserYouTubeGuard = BrowserYouTubeGuard(
@@ -85,6 +86,7 @@ final class AppState: ObservableObject {
             message = ""
             updateCountdownWindow()
             updateAccountabilityWindow()
+            sendEmergencyAccessMessageIfNeeded()
             scheduleRefresh()
         } catch {
             status.daemonRunning = false
@@ -100,6 +102,7 @@ final class AppState: ObservableObject {
             if let distractionSettings = response.distractionSettings { self.distractionSettings = distractionSettings }
             updateCountdownWindow()
             updateAccountabilityWindow()
+            sendEmergencyAccessMessageIfNeeded()
         } catch {
             status.daemonRunning = false
         }
@@ -351,6 +354,7 @@ final class AppState: ObservableObject {
             message = response.message
             if let status = response.status { self.status = status }
             updateCountdownWindow()
+            sendEmergencyAccessMessageIfNeeded()
         } catch { message = String(describing: error) }
     }
 
@@ -406,7 +410,25 @@ final class AppState: ObservableObject {
             message = response.message
             if let status = response.status { self.status = status }
             updateCountdownWindow()
+            sendEmergencyAccessMessageIfNeeded()
         } catch { message = String(describing: error) }
+    }
+
+    func allowDiscordSetupException() {
+        do {
+            let response = try UnixSocketClient.request(IPCRequest(command: .allowDiscordOneOff))
+            message = response.message
+            if let status = response.status { self.status = status }
+        } catch {
+            message = String(describing: error)
+        }
+    }
+
+    func discordIsConfigured() -> Bool {
+        distractionSettings.blockedDomains.contains { value in
+            let host = normalizedDistractionDomain(value)
+            return host == "discord.com" || host.hasSuffix(".discord.com")
+        }
     }
 
     func menuText(now: Date = Date()) -> String {
@@ -479,6 +501,49 @@ final class AppState: ObservableObject {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
+    }
+
+    private func sendEmergencyAccessMessageIfNeeded() {
+        guard let event = status.emergencyAccessTriggeredAt else { return }
+        let recipient = pornSettings.accountabilityRecipient
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recipient.isEmpty else { return }
+
+        let key = "deadlock.last-emergency-access-message"
+        let eventTime = event.timeIntervalSince1970
+        let last = UserDefaults.standard.double(forKey: key)
+        guard eventTime > last + 0.5 else { return }
+        guard emergencyMessageAttemptedEvent != event else { return }
+
+        // Mark before invoking Messages to avoid duplicate sends if the UI
+        // refreshes while Automation permission is being resolved.
+        emergencyMessageAttemptedEvent = event
+
+        let safeRecipient = appleScriptQuoted(recipient)
+        let untilText: String
+        if let until = status.emergencyOverrideUntil {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            untilText = formatter.string(from: until)
+        } else {
+            untilText = "its automatic expiry"
+        }
+        let safeBody = appleScriptQuoted(
+            "Deadlock emergency sleep access was activated on my Mac. "
+            + "Sleep enforcement is temporarily suspended until \(untilText) "
+            + "and will resume automatically. My other blockers remain active."
+        )
+        let source = "tell application \"Messages\" to send \"\(safeBody)\" to buddy \"\(safeRecipient)\" of (first service whose service type = iMessage)"
+        var errorInfo: NSDictionary?
+        if let script = NSAppleScript(source: source) {
+            _ = script.executeAndReturnError(&errorInfo)
+        }
+        if let errorInfo {
+            message = "Emergency access started, but the friend iMessage could not be sent. Check the recipient and allow deadlock to control Messages in Privacy & Security → Automation. (\(errorInfo))"
+        } else {
+            UserDefaults.standard.set(eventTime, forKey: key)
+        }
     }
 
     private func sendAccountabilityIfNeeded() {
@@ -730,6 +795,29 @@ struct ContentView: View {
                             Button("Run 2-minute test") { state.startTest() }
                             Spacer()
                         }
+
+                        if state.status.active {
+                            Divider()
+                            HStack {
+                                Label("Sleep lock is enforcing now", systemImage: "moon.zzz.fill")
+                                    .font(.headline)
+                                Spacer()
+                                Button("Emergency access now…") {
+                                    state.confirmEmergencyNow()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!state.status.emergencyImmediateAvailable)
+                            }
+                            Text(
+                                state.pornSettings.accountabilityRecipient
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                    .isEmpty
+                                ? "No accountability friend is configured yet."
+                                : "Using emergency access will send your configured friend an iMessage."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
                     }.padding(4)
                 }
 
@@ -765,6 +853,24 @@ struct ContentView: View {
                                         ? .orange
                                         : .secondary
                                 )
+                        }
+
+                        if state.discordIsConfigured() {
+                            HStack {
+                                if let until = state.status.discordOneOffAllowedUntil,
+                                   until > Date() {
+                                    Label("Discord setup access active", systemImage: "checkmark.circle.fill")
+                                    RemainingTimeView(until: until)
+                                } else {
+                                    Button("Allow Discord for 45 min — setup only") {
+                                        state.allowDiscordSetupException()
+                                    }
+                                    Text("One use on 29 Sep only; cannot be extended.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
                         }
 
                         HStack {
@@ -938,15 +1044,26 @@ struct ContentView: View {
                         }
 
                         Divider()
-                        Toggle("Friend accountability", isOn: $state.pornSettings.accountabilityEnabled)
+                        Toggle("Porn-content accountability", isOn: $state.pornSettings.accountabilityEnabled)
                             .disabled(!state.status.pornSettingsEditableToday)
-                        TextField("Friend iMessage phone number or email", text: $state.pornSettings.accountabilityRecipient)
+
+                        Text("Accountability friend")
+                            .font(.headline)
+                        HStack {
+                            TextField(
+                                "Friend iMessage phone number or email",
+                                text: $state.pornSettings.accountabilityRecipient
+                            )
                             .textFieldStyle(.roundedBorder)
-                            .disabled(!state.status.pornSettingsEditableToday)
+                            Button("Save friend") {
+                                state.savePornSettings()
+                            }
+                        }
+
                         Toggle("Show dark motivational interruption", isOn: $state.pornSettings.motivationalOverlayEnabled)
                             .disabled(!state.status.pornSettingsEditableToday)
 
-                        Text("During protection, matching adult URLs/text closes the app. If a friend is configured, Deadlock automatically sends one accountability iMessage per 10-minute period to avoid duplicate spam.")
+                        Text("The friend address can be corrected at any time without weakening protection. Deadlock uses it for emergency sleep-access alerts. If porn-content accountability is enabled, it also sends one iMessage for blocked adult-content events.")
                             .font(.caption).foregroundStyle(.secondary)
 
                         Button("Save Porn Blocker settings") { state.savePornSettings() }
@@ -986,7 +1103,7 @@ struct ContentView: View {
                     }.padding(4)
                 }
 
-                DisclosureGroup("Emergency sleep access") {
+                GroupBox("Emergency sleep access") {
                     VStack(alignment: .leading, spacing: 10) {
                         if let until = state.status.emergencyOverrideUntil,
                            until > Date() {
