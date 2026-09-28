@@ -148,11 +148,9 @@ case "${1:-}" in
   perf) perf ;;
   web) web ;;
   doctor) doctor ;;
-  discord-setup-once) "$APP/Contents/MacOS/deadlock" --ipc discord-setup-once ;;
-  discord-tonight-once) "$APP/Contents/MacOS/deadlock" --ipc discord-tonight-once ;;
   emergency-now) "$APP/Contents/MacOS/deadlock" --ipc emergency-now ;;
   *)
-    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|discord-setup-once|emergency-now}"
+    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|emergency-now}"
     exit 1
     ;;
 esac

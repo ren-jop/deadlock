@@ -119,10 +119,6 @@ enum DistractionPresetCatalog {
             "Messaging",
             presets: [
                 DistractionPreset(
-                    "Discord",
-                    domains: ["discord.com"]
-                ),
-                DistractionPreset(
                     "WhatsApp Web",
                     domains: ["web.whatsapp.com"]
                 ),
