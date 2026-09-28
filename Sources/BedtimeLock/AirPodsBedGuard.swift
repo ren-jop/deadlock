@@ -247,6 +247,7 @@ final class AirPodsBedGuard: NSObject, CMHeadphoneMotionManagerDelegate {
                 return
             }
             publish()
+            return
         }
 
         guard settings.enabled, !settings.poses.isEmpty else {
