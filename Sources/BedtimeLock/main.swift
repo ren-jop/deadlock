@@ -193,6 +193,23 @@ final class AppState: ObservableObject {
         }
     }
 
+    func allowInstagramDeveloperOneOff() {
+        do {
+            let response = try UnixSocketClient.request(
+                IPCRequest(command: .allowInstagramDeveloperOneOff)
+            )
+            message = response.message
+            if let settings = response.distractionSettings {
+                distractionSettings = settings
+            }
+            if let status = response.status {
+                self.status = status
+            }
+        } catch {
+            message = String(describing: error)
+        }
+    }
+
 
     private func applyBedGuardSettings(_ settings: BedGuardSettings) {
         bedGuardSettings = settings
@@ -1039,6 +1056,32 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
+                        if let until = state.status.instagramDeveloperAllowedUntil,
+                           until > Date() {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label("Instagram developer test active", systemImage: "hammer")
+                                    .font(.caption.weight(.semibold))
+                                RemainingTimeView(until: until)
+                                Text("Instagram only is temporarily excluded from distraction blocking. The exception is single-use and cannot be extended.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if state.status.instagramDeveloperExceptionAvailable {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Instagram visual developer test")
+                                        .font(.caption.weight(.semibold))
+                                    Text("Single use · 1 hour · Instagram only · automatically re-blocks")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Start 1-hour test") {
+                                    state.allowInstagramDeveloperOneOff()
+                                }
+                            }
+                        }
+
                         HStack {
                             Picker(
                                 "Block for",
@@ -1467,6 +1510,9 @@ func runCLI() -> Never {
 
         case "emergency-now":
             request = IPCRequest(command: .emergencyImmediate)
+
+        case "instagram-dev-now":
+            request = IPCRequest(command: .allowInstagramDeveloperOneOff)
 
         case "uninstall-request":
             request = IPCRequest(command: .uninstallRequest)
