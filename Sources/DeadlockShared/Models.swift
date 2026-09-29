@@ -271,6 +271,11 @@ public struct PersistedState: Codable, Hashable, Sendable {
     /// 29 Sep 2026 setup-only Discord exception. Optional for backwards-compatible decoding.
     public var discordSetupExceptionUsed: Bool?
 
+    /// Single-use Instagram developer test exception. This is intentionally
+    /// separate from distraction settings so it cannot become a reusable bypass.
+    public var instagramDeveloperAllowedUntil: Date?
+    public var instagramDeveloperExceptionUsed: Bool?
+
     public init(
         current: LockConfig = .defaultConfig,
         pending: PendingConfig? = nil,
@@ -292,7 +297,9 @@ public struct PersistedState: Codable, Hashable, Sendable {
         bedGuardSettings: BedGuardSettings? = nil,
         discordOneOffAllowedUntil: Date? = nil,
         discordOneOffUsed: Bool? = nil,
-        discordSetupExceptionUsed: Bool? = nil
+        discordSetupExceptionUsed: Bool? = nil,
+        instagramDeveloperAllowedUntil: Date? = nil,
+        instagramDeveloperExceptionUsed: Bool? = nil
     ) {
         self.current = current
         self.pending = pending
@@ -315,6 +322,8 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.discordOneOffAllowedUntil = discordOneOffAllowedUntil
         self.discordOneOffUsed = discordOneOffUsed
         self.discordSetupExceptionUsed = discordSetupExceptionUsed
+        self.instagramDeveloperAllowedUntil = instagramDeveloperAllowedUntil
+        self.instagramDeveloperExceptionUsed = instagramDeveloperExceptionUsed
     }
 }
 
@@ -364,6 +373,8 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
     public var distractionScheduleNextStart: Date?
     public var distractionSettingsEditable: Bool
     public var discordOneOffAllowedUntil: Date?
+    public var instagramDeveloperAllowedUntil: Date?
+    public var instagramDeveloperExceptionAvailable: Bool
 
     public init(
         daemonRunning: Bool = true,
@@ -396,7 +407,9 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         distractionScheduledEnd: Date? = nil,
         distractionScheduleNextStart: Date? = nil,
         distractionSettingsEditable: Bool = true,
-        discordOneOffAllowedUntil: Date? = nil
+        discordOneOffAllowedUntil: Date? = nil,
+        instagramDeveloperAllowedUntil: Date? = nil,
+        instagramDeveloperExceptionAvailable: Bool = false
     ) {
         self.daemonRunning = daemonRunning
         self.active = active
@@ -429,6 +442,8 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         self.distractionScheduleNextStart = distractionScheduleNextStart
         self.distractionSettingsEditable = distractionSettingsEditable
         self.discordOneOffAllowedUntil = discordOneOffAllowedUntil
+        self.instagramDeveloperAllowedUntil = instagramDeveloperAllowedUntil
+        self.instagramDeveloperExceptionAvailable = instagramDeveloperExceptionAvailable
     }
 }
 
@@ -440,6 +455,7 @@ public enum IPCCommand: String, Codable, Sendable {
     case startPornBlocker
     case startDistractionBlock
     case allowDiscordOneOff
+    case allowInstagramDeveloperOneOff
     case setPornSettings
     case setDistractionSettings
     case setBedGuardSettings
