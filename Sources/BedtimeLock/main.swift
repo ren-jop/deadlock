@@ -498,6 +498,11 @@ final class AppState: ObservableObject {
             let response = try UnixSocketClient.request(IPCRequest(command: .emergencySubmit, text: emergencyTyped))
             message = response.message
             if let status = response.status { self.status = status }
+            emergencyChallenge = ""
+            emergencyTyped = ""
+            emergencyReason = ""
+            updateCountdownWindow()
+            sendEmergencyAccessMessageIfNeeded()
         } catch { message = String(describing: error) }
     }
 
@@ -1291,7 +1296,7 @@ struct ContentView: View {
 
                         Text("Deliberate emergency override")
                             .font(.headline)
-                        Text("After tonight, this is the only emergency path. Explain the concrete consequence if waiting until the sleep lock ends would cause a real problem. The daemon requires at least 80 characters and 12 words, then the existing 200-character challenge and 30-minute wait.")
+                        Text("After tonight, this is the only emergency path. Explain the concrete consequence if waiting until the sleep lock ends would cause a real problem. A valid reason must be at least 80 characters and 12 words. There is no long delay: after the reason is accepted, type a short confirmation phrase and access starts immediately.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextEditor(text: $state.emergencyReason)
@@ -1303,20 +1308,18 @@ struct ContentView: View {
                         Text("\(state.emergencyReason.trimmingCharacters(in: .whitespacesAndNewlines).count) / 80 minimum characters")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Button("Validate reason and start challenge") { state.beginEmergency() }
+                        Button("Validate emergency reason") { state.beginEmergency() }
                         if !state.emergencyChallenge.isEmpty {
+                            Text("Type this exactly to confirm:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Text(state.emergencyChallenge)
-                                .font(.system(.caption, design: .monospaced))
+                                .font(.system(.body, design: .monospaced).weight(.semibold))
                                 .textSelection(.enabled)
-                            TextEditor(text: $state.emergencyTyped)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(height: 90)
-                            Button("Submit exact text") { state.submitEmergency() }
-                        }
-                        if let ready = state.status.emergencyReadyAt {
-                            Text("Available at \(ready.formatted(date: .omitted, time: .standard))")
-                            Button("Activate 2-hour sleep override") { state.activateEmergency() }
-                                .disabled(ready > Date())
+                            TextField("Confirmation phrase", text: $state.emergencyTyped)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Confirm emergency unlock") { state.submitEmergency() }
+                                .buttonStyle(.borderedProminent)
                         }
                     }.padding(.top, 8)
                 }
