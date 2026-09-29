@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     @Published var message = ""
     @Published var emergencyChallenge = ""
     @Published var emergencyTyped = ""
+    @Published var emergencyReason = ""
     @Published var pornDurationMinutes = 240
     @Published var distractionDurationMinutes = 60
     @Published var distractionCustomEnd = Date().addingTimeInterval(2 * 3600)
@@ -473,9 +474,9 @@ final class AppState: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Start emergency sleep access?"
-        alert.informativeText = "This immediately suspends only sleep enforcement for up to 2 hours. Your saved schedule and other blockers stay unchanged. Instant access can only be used once in the current sleep window."
-        alert.addButton(withTitle: "Start emergency access")
+        alert.messageText = "Use tonight-only sleep exception?"
+        alert.informativeText = "This one-off exception exists only for tonight and disappears automatically tomorrow. It suspends only sleep enforcement until the current sleep window ends; your saved schedule and other blockers stay unchanged."
+        alert.addButton(withTitle: "Use tonight-only exception")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
@@ -485,7 +486,7 @@ final class AppState: ObservableObject {
 
     func beginEmergency() {
         do {
-            let response = try UnixSocketClient.request(IPCRequest(command: .emergencyBegin))
+            let response = try UnixSocketClient.request(IPCRequest(command: .emergencyBegin, text: emergencyReason))
             emergencyChallenge = response.challenge ?? ""
             emergencyTyped = ""
             message = response.message
@@ -881,7 +882,7 @@ struct ContentView: View {
                                 Label("Sleep lock is enforcing now", systemImage: "moon.zzz.fill")
                                     .font(.headline)
                                 Spacer()
-                                Button("Emergency access now…") {
+                                Button("Tonight-only exception…") {
                                     state.confirmEmergencyNow()
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -1288,12 +1289,21 @@ struct ContentView: View {
 
                         Divider()
 
-                        Text("Deliberate override")
+                        Text("Deliberate emergency override")
                             .font(.headline)
-                        Text("If you need another override in the same sleep window, the slower high-friction path remains available: type the challenge exactly and wait 30 minutes.")
+                        Text("After tonight, this is the only emergency path. Explain the concrete consequence if waiting until the sleep lock ends would cause a real problem. The daemon requires at least 80 characters and 12 words, then the existing 200-character challenge and 30-minute wait.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button("Start deliberate override") { state.beginEmergency() }
+                        TextEditor(text: $state.emergencyReason)
+                            .frame(height: 86)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(.secondary.opacity(0.35))
+                            )
+                        Text("\(state.emergencyReason.trimmingCharacters(in: .whitespacesAndNewlines).count) / 80 minimum characters")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Button("Validate reason and start challenge") { state.beginEmergency() }
                         if !state.emergencyChallenge.isEmpty {
                             Text(state.emergencyChallenge)
                                 .font(.system(.caption, design: .monospaced))
