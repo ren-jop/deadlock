@@ -650,7 +650,7 @@ final class DeadlockDaemon {
             )
 
         case .emergencySubmit:
-            guard emergencyReason != nil else {
+            guard let reason = emergencyReason else {
                 return IPCResponse(ok: false, message: "Start again and provide a strong emergency reason first.", status: status())
             }
             guard let expected = emergencyChallenge, let text = req.text, constantTimeEqual(expected, text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
@@ -663,6 +663,7 @@ final class DeadlockDaemon {
                 try store.mutate { state in
                     state.emergencyOverrideUntil = until
                     state.emergencyAccessTriggeredAt = now
+                    state.emergencyAccessReason = reason
                 }
             } catch {
                 return IPCResponse(ok: false, message: "Could not record emergency access: \(error)", status: status())
@@ -832,6 +833,7 @@ final class DeadlockDaemon {
             emergencyOverrideUntil: emergencyOverrideUntil,
             emergencyImmediateAvailable: emergencyImmediateAvailable,
             emergencyAccessTriggeredAt: store.state.emergencyAccessTriggeredAt,
+            emergencyAccessReason: store.state.emergencyAccessReason,
             uninstallReadyAt: uninstallReadyDate(),
             testWindowStart: testInterval?.start,
             testWindowEnd: testInterval?.end,
