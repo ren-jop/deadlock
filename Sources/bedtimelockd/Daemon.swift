@@ -18,6 +18,7 @@ final class DeadlockDaemon {
     private var launchedCountdownForStart: Date?
     private var testInterval: LockInterval?
     private var emergencyChallenge: String?
+    private var emergencyReason: String?
     private var emergencyReadyAt: Date?
     private var emergencyOverrideUntil: Date?
     private var lastWebProtectionFingerprint: String?
@@ -571,6 +572,13 @@ final class DeadlockDaemon {
 
         case .emergencyImmediate:
             let now = Date()
+            guard temporaryInstantEmergencyAllowed(now) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Instant emergency access was a one-night exception and is no longer available. Use the deliberate emergency path with a strong reason.",
+                    status: status()
+                )
+            }
             guard let active = currentInterval(now: now) else {
                 return IPCResponse(
                     ok: false,
@@ -612,22 +620,34 @@ final class DeadlockDaemon {
             }
 
             emergencyChallenge = nil
+            emergencyReason = nil
             emergencyReadyAt = nil
             emergencyOverrideUntil = until
             reschedule()
             return IPCResponse(
                 ok: true,
-                message: "Emergency sleep access active until \(ISO8601DateFormatter().string(from: until)). Your saved sleep schedule and other blockers were not changed.",
+                message: "Tonight-only emergency sleep exception active until \(ISO8601DateFormatter().string(from: until)). Your saved sleep schedule and other blockers were not changed.",
                 status: status()
             )
 
         case .emergencyBegin:
+            guard let reason = validatedEmergencyReason(req.text) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "A strong emergency reason is required. Explain the concrete consequence if this waits until the sleep lock ends, using at least 80 characters and 12 words.",
+                    status: status()
+                )
+            }
             let challenge = randomChallenge(length: 200)
+            emergencyReason = reason
             emergencyChallenge = challenge
             emergencyReadyAt = nil
-            return IPCResponse(ok: true, message: "Type the 200-character challenge exactly. The 30-minute wait starts after it matches.", status: status(), challenge: challenge)
+            return IPCResponse(ok: true, message: "Reason accepted. Type the 200-character challenge exactly. The 30-minute wait starts after it matches.", status: status(), challenge: challenge)
 
         case .emergencySubmit:
+            guard emergencyReason != nil else {
+                return IPCResponse(ok: false, message: "Start again and provide a strong emergency reason first.", status: status())
+            }
             guard let expected = emergencyChallenge, let text = req.text, constantTimeEqual(expected, text) else {
                 return IPCResponse(ok: false, message: "Challenge did not match.", status: status())
             }
@@ -637,6 +657,9 @@ final class DeadlockDaemon {
             return IPCResponse(ok: true, message: "Challenge accepted. Emergency sleep override unlocks in 30 minutes.", status: status())
 
         case .emergencyActivate:
+            guard emergencyReason != nil else {
+                return IPCResponse(ok: false, message: "Emergency reason is missing. Start the deliberate emergency process again.", status: status())
+            }
             guard let ready = emergencyReadyAt, Date() >= ready else {
                 return IPCResponse(ok: false, message: "Emergency wait has not finished.", status: status())
             }
@@ -648,8 +671,9 @@ final class DeadlockDaemon {
                 }
             }
             emergencyReadyAt = nil
+            emergencyReason = nil
             reschedule()
-            return IPCResponse(ok: true, message: "Emergency sleep override active for 2 hours. Porn Blocker schedules are unaffected.", status: status())
+            return IPCResponse(ok: true, message: "Emergency sleep override active for 2 hours. The strong-reason gate, challenge and wait were completed; Porn Blocker schedules are unaffected.", status: status())
 
         case .uninstallRequest:
             do {
@@ -777,6 +801,7 @@ final class DeadlockDaemon {
         let blocked = settingsGuard || active != nil || (next.map { $0.start.timeIntervalSince(now) <= 300 } ?? false)
         let pornSettings = effectivePornSettings()
         let emergencyImmediateAvailable: Bool = {
+            guard temporaryInstantEmergencyAllowed(now) else { return false }
             guard let active else { return false }
             guard !overrideActive(now) else { return false }
             if let usedForStart = store.state.emergencyImmediateUsedForStart,
@@ -1215,6 +1240,26 @@ final class DeadlockDaemon {
     private func weekdayName(_ weekday: Int) -> String {
         let names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         return names[min(7, max(1, weekday)) - 1]
+    }
+
+    private func temporaryInstantEmergencyAllowed(_ now: Date) -> Bool {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 9
+        components.day = 30
+        components.hour = 12
+        components.minute = 0
+        components.second = 0
+        guard let cutoff = Calendar.current.date(from: components) else { return false }
+        return now < cutoff
+    }
+
+    private func validatedEmergencyReason(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let reason = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = reason.split { $0.isWhitespace || $0.isNewline }
+        guard reason.count >= 80, words.count >= 12 else { return nil }
+        return reason
     }
 
     private func randomChallenge(length: Int) -> String {
