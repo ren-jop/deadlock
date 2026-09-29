@@ -614,10 +614,19 @@ final class AppState: ObservableObject {
         } else {
             untilText = "its automatic expiry"
         }
+        let reasonText: String
+        if let reason = status.emergencyAccessReason?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !reason.isEmpty {
+            reasonText = " Reason: " + String(reason.prefix(240))
+        } else {
+            reasonText = ""
+        }
         let safeBody = appleScriptQuoted(
             "Deadlock emergency sleep access was activated on my Mac. "
             + "Sleep enforcement is temporarily suspended until \(untilText) "
             + "and will resume automatically. My other blockers remain active."
+            + reasonText
         )
         let source = "tell application \"Messages\" to send \"\(safeBody)\" to buddy \"\(safeRecipient)\" of (first service whose service type = iMessage)"
         var errorInfo: NSDictionary?
