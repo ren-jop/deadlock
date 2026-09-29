@@ -638,42 +638,53 @@ final class DeadlockDaemon {
                     status: status()
                 )
             }
-            let challenge = randomChallenge(length: 200)
+            let challenge = "EMERGENCY UNLOCK"
             emergencyReason = reason
             emergencyChallenge = challenge
             emergencyReadyAt = nil
-            return IPCResponse(ok: true, message: "Reason accepted. Type the 200-character challenge exactly. The 30-minute wait starts after it matches.", status: status(), challenge: challenge)
+            return IPCResponse(
+                ok: true,
+                message: "Reason accepted. Type EMERGENCY UNLOCK to confirm this is genuinely urgent.",
+                status: status(),
+                challenge: challenge
+            )
 
         case .emergencySubmit:
             guard emergencyReason != nil else {
                 return IPCResponse(ok: false, message: "Start again and provide a strong emergency reason first.", status: status())
             }
-            guard let expected = emergencyChallenge, let text = req.text, constantTimeEqual(expected, text) else {
-                return IPCResponse(ok: false, message: "Challenge did not match.", status: status())
+            guard let expected = emergencyChallenge, let text = req.text, constantTimeEqual(expected, text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return IPCResponse(ok: false, message: "Confirmation did not match. Type EMERGENCY UNLOCK exactly.", status: status())
             }
-            emergencyChallenge = nil
-            emergencyReadyAt = Date().addingTimeInterval(30 * 60)
-            reschedule()
-            return IPCResponse(ok: true, message: "Challenge accepted. Emergency sleep override unlocks in 30 minutes.", status: status())
 
-        case .emergencyActivate:
-            guard emergencyReason != nil else {
-                return IPCResponse(ok: false, message: "Emergency reason is missing. Start the deliberate emergency process again.", status: status())
-            }
-            guard let ready = emergencyReadyAt, Date() >= ready else {
-                return IPCResponse(ok: false, message: "Emergency wait has not finished.", status: status())
-            }
-            emergencyOverrideUntil = Date().addingTimeInterval(2 * 3600)
-            if let until = emergencyOverrideUntil {
-                try? store.mutate { state in
+            let now = Date()
+            let until = Date().addingTimeInterval(2 * 3600)
+            do {
+                try store.mutate { state in
                     state.emergencyOverrideUntil = until
-                    state.emergencyAccessTriggeredAt = Date()
+                    state.emergencyAccessTriggeredAt = now
                 }
+            } catch {
+                return IPCResponse(ok: false, message: "Could not record emergency access: \(error)", status: status())
             }
+
+            emergencyOverrideUntil = until
+            emergencyChallenge = nil
             emergencyReadyAt = nil
             emergencyReason = nil
             reschedule()
-            return IPCResponse(ok: true, message: "Emergency sleep override active for 2 hours. The strong-reason gate, challenge and wait were completed; Porn Blocker schedules are unaffected.", status: status())
+            return IPCResponse(
+                ok: true,
+                message: "Emergency sleep override active for 2 hours. Your other blockers remain unchanged.",
+                status: status()
+            )
+
+        case .emergencyActivate:
+            return IPCResponse(
+                ok: false,
+                message: "There is no timed emergency wait anymore. Enter a strong reason and confirm with EMERGENCY UNLOCK.",
+                status: status()
+            )
 
         case .uninstallRequest:
             do {
