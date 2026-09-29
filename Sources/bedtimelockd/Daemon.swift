@@ -104,6 +104,43 @@ final class DeadlockDaemon {
             || normalized.hasSuffix(".discord.com")
     }
 
+    private func isInstagramDomain(_ domain: String) -> Bool {
+        let normalized = domain
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return normalized == "instagram.com"
+            || normalized.hasSuffix(".instagram.com")
+    }
+
+    private func instagramDeveloperExceptionActive(_ now: Date = Date()) -> Bool {
+        guard let until = store.state.instagramDeveloperAllowedUntil else {
+            return false
+        }
+        return until > now
+    }
+
+    private func instagramDeveloperActivationDeadline() -> Date? {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 9
+        components.day = 30
+        components.hour = 1
+        components.minute = 0
+        components.second = 0
+        return Calendar.current.date(from: components)
+    }
+
+    private func instagramDeveloperExceptionAvailable(_ now: Date = Date()) -> Bool {
+        guard store.state.instagramDeveloperExceptionUsed != true else {
+            return false
+        }
+        guard let deadline = instagramDeveloperActivationDeadline() else {
+            return false
+        }
+        return now < deadline
+    }
+
     private func sanitizedDistractionSettings(
         _ settings: DistractionSettings
     ) -> DistractionSettings {
@@ -188,9 +225,13 @@ final class DeadlockDaemon {
     private func effectiveDistractionDomains(
         _ now: Date = Date()
     ) -> [String] {
-        PolicyEngine.normalizedDomains(
+        let instagramAllowed = instagramDeveloperExceptionActive(now)
+        return PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
-        ).filter { !isAlwaysAllowedDistractionDomain($0) }
+        ).filter {
+            !isAlwaysAllowedDistractionDomain($0)
+                && !(instagramAllowed && isInstagramDomain($0))
+        }
     }
 
     private func acceptLoop() {
@@ -431,6 +472,50 @@ final class DeadlockDaemon {
                 status: status(),
                 distractionSettings: effectiveDistractionSettings()
             )
+
+        case .allowInstagramDeveloperOneOff:
+            let now = Date()
+            if let until = store.state.instagramDeveloperAllowedUntil,
+               until > now {
+                return IPCResponse(
+                    ok: true,
+                    message: "Instagram developer testing is already allowed until \(ISO8601DateFormatter().string(from: until)).",
+                    status: status(),
+                    distractionSettings: effectiveDistractionSettings()
+                )
+            }
+            guard instagramDeveloperExceptionAvailable(now) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "The single-use Instagram developer-test exception is no longer available.",
+                    status: status(),
+                    distractionSettings: effectiveDistractionSettings()
+                )
+            }
+
+            let until = now.addingTimeInterval(60 * 60)
+            do {
+                try store.mutate { state in
+                    state.instagramDeveloperAllowedUntil = until
+                    state.instagramDeveloperExceptionUsed = true
+                }
+                applyWebProtectionIfNeeded(force: true)
+                contentMonitor?.rescanFrontmost()
+                reschedule()
+                return IPCResponse(
+                    ok: true,
+                    message: "Instagram developer testing is allowed for one hour, until \(ISO8601DateFormatter().string(from: until)). It cannot be extended or reused.",
+                    status: status(),
+                    distractionSettings: effectiveDistractionSettings()
+                )
+            } catch {
+                return IPCResponse(
+                    ok: false,
+                    message: "Could not start Instagram developer exception: \(error)",
+                    status: status(),
+                    distractionSettings: effectiveDistractionSettings()
+                )
+            }
 
         case .setDistractionSettings:
             guard var new = req.distractionSettings else {
@@ -865,7 +950,9 @@ final class DeadlockDaemon {
             distractionScheduledEnd: scheduledDistraction?.end,
             distractionScheduleNextStart: nextDistraction?.start,
             distractionSettingsEditable: distractionSettingsEditable(now),
-            discordOneOffAllowedUntil: nil
+            discordOneOffAllowedUntil: nil,
+            instagramDeveloperAllowedUntil: store.state.instagramDeveloperAllowedUntil,
+            instagramDeveloperExceptionAvailable: instagramDeveloperExceptionAvailable(now)
         )
     }
 
@@ -927,6 +1014,10 @@ final class DeadlockDaemon {
             if let manual = self.store.state.distractionBlockUntil, now >= manual {
                 try? self.store.mutate { $0.distractionBlockUntil = nil }
             }
+            if let instagramUntil = self.store.state.instagramDeveloperAllowedUntil,
+               now >= instagramUntil {
+                try? self.store.mutate { $0.instagramDeveloperAllowedUntil = nil }
+            }
             self.applyWebProtectionIfNeeded()
             if self.pornProtectionActive(now) || self.distractionWebProtectionEnabled(now) {
                 self.contentMonitor?.rescanFrontmost()
@@ -975,6 +1066,15 @@ final class DeadlockDaemon {
         if let until = store.state.discordOneOffAllowedUntil,
            until > now {
             dates.append(until)
+        }
+        if let until = store.state.instagramDeveloperAllowedUntil,
+           until > now {
+            dates.append(until)
+        }
+        if let deadline = instagramDeveloperActivationDeadline(),
+           deadline > now,
+           store.state.instagramDeveloperExceptionUsed != true {
+            dates.append(deadline)
         }
         if let settingsEnd = store.state.settingsLockedUntil, settingsEnd > now { dates.append(settingsEnd) }
         if let refresh = nextWebProtectionRefreshAt, refresh > now { dates.append(refresh) }
