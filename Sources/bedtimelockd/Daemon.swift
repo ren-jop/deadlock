@@ -604,7 +604,7 @@ final class DeadlockDaemon {
                 )
             }
 
-            let until = min(now.addingTimeInterval(2 * 3600), active.end)
+            let until = active.end
             do {
                 try store.mutate { state in
                     state.emergencyImmediateUsedForStart = active.start
@@ -1257,7 +1257,9 @@ final class DeadlockDaemon {
     private func validatedEmergencyReason(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let reason = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let words = reason.split { $0.isWhitespace || $0.isNewline }
+        let words = reason.split { ch in
+            ch == " " || ch == "\n" || ch == "\t" || ch == "\r"
+        }
         guard reason.count >= 80, words.count >= 12 else { return nil }
         return reason
     }
