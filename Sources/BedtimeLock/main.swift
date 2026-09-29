@@ -1298,7 +1298,7 @@ struct ContentView: View {
                             .frame(height: 86)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .stroke(.secondary.opacity(0.35))
+                                    .stroke(Color.secondary.opacity(0.35))
                             )
                         Text("\(state.emergencyReason.trimmingCharacters(in: .whitespacesAndNewlines).count) / 80 minimum characters")
                             .font(.caption2)
