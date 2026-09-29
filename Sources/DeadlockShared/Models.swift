@@ -252,6 +252,9 @@ public struct PersistedState: Codable, Hashable, Sendable {
     /// Separate emergency-access event for friend notification. This is kept
     /// independent from porn accountability so it never opens the porn overlay.
     public var emergencyAccessTriggeredAt: Date?
+    /// User-provided explanation for a deliberate emergency sleep override.
+    /// Optional keeps older persisted state files decodable.
+    public var emergencyAccessReason: String?
 
     /// Ordinary distraction blocking is separate from the stricter Porn Blocker.
     public var distractionBlockUntil: Date?
@@ -283,6 +286,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         accountabilityReason: String? = nil,
         lastAccountabilityTriggeredAt: Date? = nil,
         emergencyAccessTriggeredAt: Date? = nil,
+        emergencyAccessReason: String? = nil,
         distractionBlockUntil: Date? = nil,
         distractionSettings: DistractionSettings? = nil,
         bedGuardSettings: BedGuardSettings? = nil,
@@ -304,6 +308,7 @@ public struct PersistedState: Codable, Hashable, Sendable {
         self.accountabilityReason = accountabilityReason
         self.lastAccountabilityTriggeredAt = lastAccountabilityTriggeredAt
         self.emergencyAccessTriggeredAt = emergencyAccessTriggeredAt
+        self.emergencyAccessReason = emergencyAccessReason
         self.distractionBlockUntil = distractionBlockUntil
         self.distractionSettings = distractionSettings
         self.bedGuardSettings = bedGuardSettings
@@ -334,6 +339,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
     public var emergencyOverrideUntil: Date?
     public var emergencyImmediateAvailable: Bool
     public var emergencyAccessTriggeredAt: Date?
+    public var emergencyAccessReason: String?
     public var uninstallReadyAt: Date?
     public var testWindowStart: Date?
     public var testWindowEnd: Date?
@@ -370,6 +376,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         emergencyOverrideUntil: Date? = nil,
         emergencyImmediateAvailable: Bool = false,
         emergencyAccessTriggeredAt: Date? = nil,
+        emergencyAccessReason: String? = nil,
         uninstallReadyAt: Date? = nil,
         testWindowStart: Date? = nil,
         testWindowEnd: Date? = nil,
@@ -401,6 +408,7 @@ public struct DaemonStatus: Codable, Hashable, Sendable {
         self.emergencyOverrideUntil = emergencyOverrideUntil
         self.emergencyImmediateAvailable = emergencyImmediateAvailable
         self.emergencyAccessTriggeredAt = emergencyAccessTriggeredAt
+        self.emergencyAccessReason = emergencyAccessReason
         self.uninstallReadyAt = uninstallReadyAt
         self.testWindowStart = testWindowStart
         self.testWindowEnd = testWindowEnd
