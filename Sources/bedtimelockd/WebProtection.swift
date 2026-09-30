@@ -25,6 +25,12 @@ final class WebProtection {
     private let legacyBegin = "# BEGIN DEADLOCK WEB PROTECTION"
     private let legacyEnd = "# END DEADLOCK WEB PROTECTION"
     private let safeHostRefreshInterval: TimeInterval = 6 * 3600
+    private let adultSourceURL =
+        "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts"
+    private let adultCachePath =
+        DeadlockPaths.support + "/adult-upstream-hosts.txt"
+    private let minimumAdultSourceDomains = 10_000
+    private let maximumAdultSourceDomains = 250_000
 
     private let adultDomains = [
         "pornhub.com",
@@ -60,7 +66,11 @@ final class WebProtection {
         "hentaifox.com",
         "hentai2read.com",
         "simply-hentai.com",
-        "fakku.net"
+        "fakku.net",
+        // Mixed-content sites explicitly requested as permanent hard blocks.
+        "deviantart.com",
+        "deviantart.net",
+        "sta.sh"
     ]
 
     func apply(
@@ -96,6 +106,7 @@ final class WebProtection {
             if canReuse, let oldState {
                 state = oldState
             } else {
+                refreshExternalAdultList()
                 state = ManagedState(
                     adultBlock: buildAdultBlock(skipYouTubeSafeMapping: youtubeBrowserOnly),
                     lastResolvedAt: now,
@@ -168,8 +179,16 @@ final class WebProtection {
     private func buildAdultBlock(skipYouTubeSafeMapping: Bool = false) -> String {
         var lines = [adultBegin]
 
+        let explicitDomains = Set(adultDomains)
         for domain in adultDomains {
             appendBlockedHost(domain, lines: &lines)
+        }
+
+        // The upstream list already contains exact hostnames/subdomains, so do
+        // not expand every entry into www./m. aliases. Blocking both IPv4 and
+        // IPv6 keeps the cached list effective even when a browser prefers AAAA.
+        for domain in externalAdultDomains() where !explicitDomains.contains(domain) {
+            appendBlockedHostExact(domain, lines: &lines)
         }
 
         addSafeMapping(
@@ -239,6 +258,90 @@ final class WebProtection {
             lines.append("0.0.0.0 \(host)")
             lines.append(":: \(host)")
         }
+    }
+
+    private func appendBlockedHostExact(_ domain: String, lines: inout [String]) {
+        let normalized = domain.lowercased()
+        lines.append("0.0.0.0 \(normalized)")
+        lines.append(":: \(normalized)")
+    }
+
+    private func refreshExternalAdultList() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.arguments = [
+            "--fail", "--silent", "--show-error", "--location",
+            "--connect-timeout", "8", "--max-time", "25",
+            adultSourceURL
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let text = String(data: data, encoding: .utf8),
+                  text.contains("StevenBlack/hosts extension porn")
+            else { return }
+
+            let domains = parseExternalAdultDomains(text)
+            guard domains.count >= minimumAdultSourceDomains,
+                  domains.count <= maximumAdultSourceDomains
+            else { return }
+
+            // Refuse a clearly corrupted/misdirected upstream response rather
+            // than turning a bad fetch into a broad network outage.
+            let protectedRoots: Set<String> = [
+                "apple.com", "github.com", "google.com",
+                "microsoft.com", "cloudflare.com"
+            ]
+            guard protectedRoots.isDisjoint(with: Set(domains)) else { return }
+
+            try data.write(
+                to: URL(fileURLWithPath: adultCachePath),
+                options: .atomic
+            )
+            _ = chmod(adultCachePath, 0o600)
+        } catch {
+            // Fail closed: keep the last valid cache. If this is the first run
+            // and no cache exists yet, the built-in permanent domains remain.
+            return
+        }
+    }
+
+    private func externalAdultDomains() -> [String] {
+        guard let text = try? String(
+            contentsOfFile: adultCachePath,
+            encoding: .utf8
+        ) else { return [] }
+        return parseExternalAdultDomains(text)
+    }
+
+    private func parseExternalAdultDomains(_ text: String) -> [String] {
+        var candidates: [String] = []
+        candidates.reserveCapacity(80_000)
+
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+
+            let fields = line.split { $0 == " " || $0 == "\t" }
+            guard fields.count >= 2 else { continue }
+
+            for field in fields.dropFirst() {
+                let value = String(field)
+                if value.hasPrefix("#") { break }
+                candidates.append(value)
+            }
+        }
+
+        return PolicyEngine.normalizedDomains(
+            candidates,
+            limit: maximumAdultSourceDomains
+        )
     }
 
     private func appendBlocks(_ blocks: [String], to unmanaged: String) -> String {
