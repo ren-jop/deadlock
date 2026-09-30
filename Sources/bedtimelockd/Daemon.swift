@@ -680,19 +680,9 @@ final class DeadlockDaemon {
                 )
             }
 
-            if let usedForStart = store.state.emergencyImmediateUsedForStart,
-               abs(usedForStart.timeIntervalSince(active.start)) < 1 {
-                return IPCResponse(
-                    ok: false,
-                    message: "Instant emergency access has already been used for this sleep window. Use the deliberate emergency process if another override is genuinely required.",
-                    status: status()
-                )
-            }
-
             let until = active.end
             do {
                 try store.mutate { state in
-                    state.emergencyImmediateUsedForStart = active.start
                     state.emergencyOverrideUntil = until
                     state.emergencyAccessTriggeredAt = now
                 }
@@ -901,10 +891,6 @@ final class DeadlockDaemon {
             guard temporaryInstantEmergencyAllowed(now) else { return false }
             guard let active else { return false }
             guard !overrideActive(now) else { return false }
-            if let usedForStart = store.state.emergencyImmediateUsedForStart,
-               abs(usedForStart.timeIntervalSince(active.start)) < 1 {
-                return false
-            }
             return true
         }()
 
