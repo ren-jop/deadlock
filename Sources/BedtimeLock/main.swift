@@ -1178,83 +1178,28 @@ struct ContentView: View {
                     .padding(4)
                 }
 
-                GroupBox("Porn Blocker") {
+                GroupBox("Permanent adult-content protection") {
                     VStack(alignment: .leading, spacing: 12) {
-                        if state.status.pornBlockerActive {
-                            Label("Protection active", systemImage: "lock.fill").font(.headline)
-                            if let manual = state.status.pornBlockerUntil, manual > Date() {
-                                Text("Manual lock ends \(manual.formatted(date: .abbreviated, time: .shortened))")
-                                RemainingTimeView(until: manual)
-                            }
-                            if let scheduledEnd = state.status.pornScheduledEnd, scheduledEnd > Date() {
-                                Text("Mandatory schedule ends \(scheduledEnd.formatted(date: .omitted, time: .shortened))")
-                            }
-                            Text("It cannot be disabled or weakened while this window is active.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            if let next = state.status.pornScheduleNextStart {
-                                Text("Next mandatory window: \(next.formatted(date: .abbreviated, time: .shortened))")
+                        Label("Always on", systemImage: "lock.fill")
+                            .font(.headline)
+                        Text("Adult websites are blocked 24/7. Sleep emergency access, distraction exceptions and schedule changes do not disable this protection.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Deadlock refreshes the maintained adult-domain list every 6 hours and keeps the last valid copy if the network or upstream source is unavailable. DeviantArt is also hard-blocked separately.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if !state.status.webProtectionHealthy {
+                            Label("Web protection needs repair", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            if let error = state.status.webProtectionLastError {
+                                Text(error)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            if !state.status.webProtectionHealthy {
-                                Label("Web protection needs repair", systemImage: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
-                                if let error = state.status.webProtectionLastError {
-                                    Text(error).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            HStack {
-                                Picker("Lock for", selection: $state.pornDurationMinutes) {
-                                    Text("15 min").tag(15)
-                                    Text("30 min").tag(30)
-                                    Text("1 hour").tag(60)
-                                    Text("2 hours").tag(120)
-                                    Text("4 hours").tag(240)
-                                    Text("8 hours").tag(480)
-                                    Text("12 hours").tag(720)
-                                    Text("1 day").tag(1440)
-                                    Text("3 days").tag(4320)
-                                    Text("7 days").tag(10080)
-                                    Text("30 days").tag(43200)
-                                    Text("Custom…").tag(0)
-                                }
-                                .frame(width: 190)
-                                Button("Lock now") { state.startPornBlocker() }
-                            }
-                            if state.pornDurationMinutes == 0 {
-                                DatePicker(
-                                    "Custom end",
-                                    selection: $state.pornCustomEnd,
-                                    in: Date().addingTimeInterval(15 * 60)...Date().addingTimeInterval(365 * 24 * 3600)
-                                )
-                            }
                         }
 
                         Divider()
-                        Text("Mandatory hours").font(.headline)
-                        Toggle("Always enforce scheduled windows", isOn: $state.pornSettings.scheduleEnabled)
-                            .disabled(!state.status.pornSettingsEditableToday)
-                        ForEach($state.pornSettings.days) { $day in
-                            ScheduleRow(day: $day, disabled: !state.status.pornSettingsEditableToday)
-                        }
-
-                        HStack {
-                            Text("Settings edit day")
-                            Picker("", selection: $state.pornSettings.editWeekday) {
-                                ForEach(1...7, id: \.self) { day in Text(weekdays[day - 1]).tag(day) }
-                            }
-                            .labelsHidden()
-                            .frame(width: 150)
-                            .disabled(!state.status.pornSettingsEditableToday)
-                            Spacer()
-                            if !state.status.pornSettingsEditableToday {
-                                Text("Locked today").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Divider()
-                        Toggle("Porn-content accountability", isOn: $state.pornSettings.accountabilityEnabled)
-                            .disabled(!state.status.pornSettingsEditableToday)
 
                         Text("Accountability friend")
                             .font(.headline)
@@ -1269,14 +1214,9 @@ struct ContentView: View {
                             }
                         }
 
-                        Toggle("Show dark motivational interruption", isOn: $state.pornSettings.motivationalOverlayEnabled)
-                            .disabled(!state.status.pornSettingsEditableToday)
-
-                        Text("The friend address can be corrected at any time without weakening protection. Deadlock uses it for emergency sleep-access alerts. If porn-content accountability is enabled, it also sends one iMessage for blocked adult-content events.")
-                            .font(.caption).foregroundStyle(.secondary)
-
-                        Button("Save Porn Blocker settings") { state.savePornSettings() }
-                            .disabled(!state.status.pornSettingsEditableToday)
+                        Text("The friend address can still be corrected without weakening permanent blocking. Deadlock can use it for emergency sleep-access alerts and configured adult-content accountability events.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }.padding(4)
                 }
 
