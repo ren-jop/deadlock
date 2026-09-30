@@ -123,18 +123,15 @@ final class DeadlockDaemon {
     private func instagramDeveloperActivationDeadline() -> Date? {
         var components = DateComponents()
         components.year = 2026
-        components.month = 9
-        components.day = 30
-        components.hour = 1
+        components.month = 10
+        components.day = 1
+        components.hour = 0
         components.minute = 0
         components.second = 0
         return Calendar.current.date(from: components)
     }
 
     private func instagramDeveloperExceptionAvailable(_ now: Date = Date()) -> Bool {
-        guard store.state.instagramDeveloperExceptionUsed != true else {
-            return false
-        }
         guard let deadline = instagramDeveloperActivationDeadline() else {
             return false
         }
@@ -493,7 +490,14 @@ final class DeadlockDaemon {
                 )
             }
 
-            let until = now.addingTimeInterval(60 * 60)
+            guard let until = instagramDeveloperActivationDeadline() else {
+                return IPCResponse(
+                    ok: false,
+                    message: "Could not determine tonight's Instagram exception cutoff.",
+                    status: status(),
+                    distractionSettings: effectiveDistractionSettings()
+                )
+            }
             do {
                 try store.mutate { state in
                     state.instagramDeveloperAllowedUntil = until
@@ -504,7 +508,7 @@ final class DeadlockDaemon {
                 reschedule()
                 return IPCResponse(
                     ok: true,
-                    message: "Instagram developer testing is allowed for one hour, until \(ISO8601DateFormatter().string(from: until)). It cannot be extended or reused.",
+                    message: "Tonight-only Instagram access is active until midnight. It expires automatically and does not change the saved blocker configuration.",
                     status: status(),
                     distractionSettings: effectiveDistractionSettings()
                 )
