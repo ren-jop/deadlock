@@ -32,6 +32,30 @@ final class WebProtection {
     private let minimumAdultSourceDomains = 10_000
     private let maximumAdultSourceDomains = 250_000
 
+    private let socialSourceURL =
+        "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/social-only/hosts"
+    private let socialCachePath =
+        DeadlockPaths.support + "/social-upstream-hosts.txt"
+    private let minimumSocialSourceDomains = 500
+    private let maximumSocialSourceDomains = 25_000
+    private let socialImportAllowRoots = [
+        // Imported social lists never get to decide policy for explicit
+        // communication/productivity exceptions.
+        "discord.com",
+        "discord.gg",
+        "instagram.com",
+        "slack.com",
+        "slack-edge.com",
+        "slack-files.com",
+        "teams.microsoft.com",
+        "teams.live.com",
+        "skype.com",
+        "zoom.us",
+        "zoom.com",
+        "meet.google.com",
+        "chat.google.com"
+    ]
+
     private let adultDomains = [
         "pornhub.com",
         "xvideos.com",
@@ -121,6 +145,7 @@ final class WebProtection {
         }
 
         if !normalizedDistractions.isEmpty {
+            refreshExternalSocialListIfNeeded(force: forceRefresh, now: now)
             blocks.append(buildDistractionBlock(normalizedDistractions))
         }
 
@@ -228,12 +253,26 @@ final class WebProtection {
 
     private func buildDistractionBlock(_ domains: [String]) -> String {
         var lines = [distractionBegin]
+        var seen = Set<String>()
+
         for domain in domains {
             // YouTube is enforced at the browser/app layer instead of DNS so
             // IINA and yt-dlp can keep normal YouTube resolution.
             if isBrowserOnlyDomain(domain) { continue }
             appendBlockedHost(domain, lines: &lines)
+            seen.insert(domain.lowercased())
         }
+
+        // Social-only upstream coverage catches alternate/front-end domains
+        // that are easy to miss in a hand-maintained distraction list.
+        // Explicit communication/productivity exceptions are filtered here,
+        // so imported data cannot silently override local Deadlock policy.
+        for domain in externalSocialDomains()
+            where !isSocialImportAllowed(domain)
+                && !seen.contains(domain.lowercased()) {
+            appendBlockedHostExact(domain, lines: &lines)
+        }
+
         lines.append(distractionEnd)
         return lines.joined(separator: "\n")
     }
@@ -343,6 +382,97 @@ final class WebProtection {
             candidates,
             limit: maximumAdultSourceDomains
         )
+    }
+
+    private func refreshExternalSocialListIfNeeded(
+        force: Bool,
+        now: Date
+    ) {
+        if !force,
+           let attrs = try? FileManager.default.attributesOfItem(
+                atPath: socialCachePath
+           ),
+           let modified = attrs[.modificationDate] as? Date,
+           modified.addingTimeInterval(safeHostRefreshInterval) > now {
+            return
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.arguments = [
+            "--fail", "--silent", "--show-error", "--location",
+            "--connect-timeout", "8", "--max-time", "25",
+            socialSourceURL
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let text = String(data: data, encoding: .utf8),
+                  text.contains("Limited to the extensions: social")
+                    || text.contains("StevenBlack/hosts")
+            else { return }
+
+            let domains = parseExternalSocialDomains(text)
+            guard domains.count >= minimumSocialSourceDomains,
+                  domains.count <= maximumSocialSourceDomains
+            else { return }
+
+            try data.write(
+                to: URL(fileURLWithPath: socialCachePath),
+                options: .atomic
+            )
+            _ = chmod(socialCachePath, 0o600)
+        } catch {
+            // Fail closed: keep the last valid social cache. The explicit
+            // Deadlock distraction list still applies if no cache exists yet.
+            return
+        }
+    }
+
+    private func externalSocialDomains() -> [String] {
+        guard let text = try? String(
+            contentsOfFile: socialCachePath,
+            encoding: .utf8
+        ) else { return [] }
+        return parseExternalSocialDomains(text)
+    }
+
+    private func parseExternalSocialDomains(_ text: String) -> [String] {
+        var candidates: [String] = []
+        candidates.reserveCapacity(5_000)
+
+        for rawLine in text.split(whereSeparator: { $0.isNewline }) {
+            let line = String(rawLine)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+
+            let fields = line.split { $0 == " " || $0 == "\t" }
+            guard fields.count >= 2 else { continue }
+
+            for field in fields.dropFirst() {
+                let value = String(field)
+                if value.hasPrefix("#") { break }
+                candidates.append(value)
+            }
+        }
+
+        return PolicyEngine.normalizedDomains(
+            candidates,
+            limit: maximumSocialSourceDomains
+        )
+    }
+
+    private func isSocialImportAllowed(_ domain: String) -> Bool {
+        let host = domain.lowercased()
+        return socialImportAllowRoots.contains {
+            host == $0 || host.hasSuffix("." + $0)
+        }
     }
 
     private func appendBlocks(_ blocks: [String], to unmanaged: String) -> String {
