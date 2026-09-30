@@ -44,6 +44,13 @@ final class WebProtection {
         "discord.com",
         "discord.gg",
         "instagram.com",
+        // Instagram's web app serves images/video and some attachments from
+        // shared Meta CDNs. Keep those reachable when Instagram itself is an
+        // explicit exception, without allowing facebook.com.
+        "cdninstagram.com",
+        "fbcdn.net",
+        "fbcdn.com",
+        "fbsbx.com",
         "slack.com",
         "slack-edge.com",
         "slack-files.com",
