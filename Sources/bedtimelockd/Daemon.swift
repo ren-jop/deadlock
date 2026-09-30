@@ -1345,7 +1345,8 @@ final class DeadlockDaemon {
         var components = DateComponents()
         components.year = 2026
         components.month = 9
-        components.day = 30
+        components.day = 1
+        components.month = 10
         components.hour = 12
         components.minute = 0
         components.second = 0
