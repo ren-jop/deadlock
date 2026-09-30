@@ -324,8 +324,9 @@ final class WebProtection {
         var candidates: [String] = []
         candidates.reserveCapacity(80_000)
 
-        for rawLine in text.split(whereSeparator: \.isNewline) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        for rawLine in text.split(whereSeparator: { $0.isNewline }) {
+            let line = String(rawLine)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty, !line.hasPrefix("#") else { continue }
 
             let fields = line.split { $0 == " " || $0 == "\t" }
