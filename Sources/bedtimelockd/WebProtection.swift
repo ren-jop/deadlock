@@ -269,6 +269,11 @@ final class WebProtection {
             // IINA and yt-dlp can keep normal YouTube resolution.
             if isBrowserOnlyDomain(domain) { continue }
             appendBlockedHost(domain, lines: &lines)
+            if domain.lowercased() == "facebook.com" {
+                for host in ["touch.facebook.com", "mobile.facebook.com", "web.facebook.com"] {
+                    appendBlockedHostExact(host, lines: &lines)
+                }
+            }
             seen.insert(domain.lowercased())
         }
 
