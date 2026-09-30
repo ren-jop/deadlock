@@ -163,10 +163,8 @@ case "${1:-}" in
   web) web ;;
   doctor) doctor ;;
   instagram-debug) instagram_debug ;;
-  emergency-now) "$APP/Contents/MacOS/deadlock" --ipc emergency-now ;;
-  instagram-dev-now) "$APP/Contents/MacOS/deadlock" --ipc instagram-dev-now ;;
   *)
-    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|instagram-debug|emergency-now|instagram-dev-now}"
+    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|instagram-debug}"
     exit 1
     ;;
 esac
