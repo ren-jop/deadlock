@@ -51,6 +51,8 @@ final class WebProtection {
         "fbcdn.net",
         "fbcdn.com",
         "fbsbx.com",
+        "facebook.net",
+        "facebook.com",
         "slack.com",
         "slack-edge.com",
         "slack-files.com",
