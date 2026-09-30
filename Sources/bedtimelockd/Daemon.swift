@@ -819,8 +819,11 @@ final class DeadlockDaemon {
     }
 
     private func pornProtectionActive(_ now: Date = Date()) -> Bool {
-        if let manual = store.state.pornBlockerUntil, manual > now { return true }
-        return scheduledPornInterval(now: now) != nil
+        // Adult-content protection is intentionally permanent. Sleep emergency
+        // overrides, distraction exceptions, schedules and manual timers must
+        // never disable this layer.
+        _ = now
+        return true
     }
 
     private func distractionScheduleConfig() -> LockConfig {
