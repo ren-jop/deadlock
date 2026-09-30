@@ -157,11 +157,13 @@ final class DeadlockDaemon {
     ) -> DistractionSettings {
         var sanitized = settings
         var domains = PolicyEngine.normalizedDomains(
-            settings.blockedDomains
-        ).filter { !isAlwaysAllowedDistractionDomain($0) }
-        if !domains.contains(where: isInstagramDomain) {
-            domains.append("instagram.com")
+            settings.blockedDomains,
+            limit: 127
+        ).filter {
+            !isAlwaysAllowedDistractionDomain($0)
+                && !isInstagramDomain($0)
         }
+        domains.insert("instagram.com", at: 0)
         sanitized.blockedDomains = domains
         return sanitized
     }
@@ -535,12 +537,7 @@ final class DeadlockDaemon {
             }
 
             new.days = PolicyEngine.normalizedDays(new.days)
-            new.blockedDomains = PolicyEngine.normalizedDomains(
-                new.blockedDomains
-            ).filter { !isAlwaysAllowedDistractionDomain($0) }
-            if !new.blockedDomains.contains(where: isInstagramDomain) {
-                new.blockedDomains.append("instagram.com")
-            }
+            new = sanitizedDistractionSettings(new)
             new.setupCompleted = true
 
             do {
