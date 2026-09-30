@@ -1062,7 +1062,7 @@ struct ContentView: View {
                                 Label("Instagram developer test active", systemImage: "hammer")
                                     .font(.caption.weight(.semibold))
                                 RemainingTimeView(until: until)
-                                Text("Instagram only is temporarily excluded from distraction blocking. The exception is single-use and cannot be extended.")
+                                Text("Instagram only is temporarily excluded from distraction blocking until tonight's automatic cutoff.")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -1071,12 +1071,12 @@ struct ContentView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Instagram visual developer test")
                                         .font(.caption.weight(.semibold))
-                                    Text("Single use · 1 hour · Instagram only · automatically re-blocks")
+                                    Text("Tonight only · Instagram only · automatically re-blocks at midnight")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button("Start 1-hour test") {
+                                Button("Allow for tonight") {
                                     state.allowInstagramDeveloperOneOff()
                                 }
                             }
@@ -1130,6 +1130,21 @@ struct ContentView: View {
 
                         Text("Blocked websites")
                             .font(.headline)
+
+                        Label(
+                            "Maintained social/distraction list included",
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                        .font(.caption.weight(.semibold))
+
+                        Text(
+                            "Deadlock automatically refreshes StevenBlack's social-only list. "
+                            + "Imported entries cannot override protected communication exceptions "
+                            + "such as Discord, Instagram, Slack, Teams, Zoom or Google Meet. "
+                            + "Your explicit local rules still decide Instagram and YouTube."
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
 
                         DistractionPresetPicker(state: state)
 
