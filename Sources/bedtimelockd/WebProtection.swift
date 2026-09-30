@@ -269,6 +269,7 @@ final class WebProtection {
         // so imported data cannot silently override local Deadlock policy.
         for domain in externalSocialDomains()
             where !isSocialImportAllowed(domain)
+                && !isBrowserOnlyDomain(domain)
                 && !seen.contains(domain.lowercased()) {
             appendBlockedHostExact(domain, lines: &lines)
         }
