@@ -1323,7 +1323,7 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("For a genuine emergency, this immediately suspends only the sleep lock for up to 2 hours. It is available only while the sleep lock is actively enforcing and can be used once per sleep window.")
+                            Text("For a genuine emergency, this immediately suspends only the sleep lock while the current sleep window is enforcing. There is no per-window usage counter.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -1334,7 +1334,7 @@ struct ContentView: View {
 
                             if !state.status.emergencyImmediateAvailable {
                                 Text(state.status.active
-                                    ? "Instant emergency access has already been used for this sleep window."
+                                    ? "Instant emergency access is unavailable right now. Use the deliberate emergency override below when a genuine emergency requires access."
                                     : "Instant emergency access becomes available when the sleep lock is actively enforcing.")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -1345,7 +1345,7 @@ struct ContentView: View {
 
                         Text("Deliberate emergency override")
                             .font(.headline)
-                        Text("After tonight, this is the only emergency path. Explain the concrete consequence if waiting until the sleep lock ends would cause a real problem. A valid reason must be at least 80 characters and 12 words. There is no long delay: after the reason is accepted, type a short confirmation phrase and access starts immediately.")
+                        Text("This emergency path has no per-window usage count. Each activation still requires a concrete strong reason of at least 80 characters and 12 words, followed by the confirmation phrase; there is no long timed delay.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextEditor(text: $state.emergencyReason)
