@@ -97,6 +97,20 @@ web() {
   echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
 }
 
+instagram_debug() {
+  echo "== Instagram / Meta host entries still managed =="
+  grep -Ei 'instagram|cdninstagram|fbcdn|fbsbx|facebook[.]net|graph[.]facebook|connect[.]facebook' /etc/hosts 2>/dev/null || echo "No matching /etc/hosts entries."
+  echo
+  echo "== DNS checks =="
+  for host in www.instagram.com static.cdninstagram.com graph.facebook.com connect.facebook.net; do
+    printf '%-30s ' "$host"
+    dscacheutil -q host -a name "$host" 2>/dev/null | awk '/ip_address:/{printf "%s ", $2} END{print ""}'
+  done
+  echo
+  echo "== HTTPS check =="
+  curl -I -L --max-time 10 https://www.instagram.com/ 2>&1 | head -20 || true
+}
+
 doctor() {
   echo "=== deadlock doctor ==="
   for path in     "$APP"     /Library/PrivilegedHelperTools/bedtimelockd     /Library/LaunchDaemons/com.deadlock.daemon.plist     /Library/LaunchDaemons/com.deadlock.watchdog.plist     "$HOME/Library/LaunchAgents/com.deadlock.menubar.plist"     /var/run/deadlock.sock
@@ -148,10 +162,11 @@ case "${1:-}" in
   perf) perf ;;
   web) web ;;
   doctor) doctor ;;
+  instagram-debug) instagram_debug ;;
   emergency-now) "$APP/Contents/MacOS/deadlock" --ipc emergency-now ;;
   instagram-dev-now) "$APP/Contents/MacOS/deadlock" --ipc instagram-dev-now ;;
   *)
-    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|emergency-now|instagram-dev-now}"
+    echo "Usage: ./deadlockctl {status|logs|restart|menu|perf|web|doctor|instagram-debug|emergency-now|instagram-dev-now}"
     exit 1
     ;;
 esac
