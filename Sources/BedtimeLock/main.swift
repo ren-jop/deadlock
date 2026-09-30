@@ -910,21 +910,12 @@ struct ContentView: View {
                                 Label("Sleep lock is enforcing now", systemImage: "moon.zzz.fill")
                                     .font(.headline)
                                 Spacer()
-                                Button("Tonight-only exception…") {
-                                    state.confirmEmergencyNow()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!state.status.emergencyImmediateAvailable)
+                                Label("Emergency grace: 5 min max", systemImage: "hourglass")
+                                    .font(.caption.weight(.semibold))
                             }
-                            Text(
-                                state.pornSettings.accountabilityRecipient
-                                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                                    .isEmpty
-                                ? "No accountability friend is configured yet."
-                                : "Using emergency access will send your configured friend an iMessage."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            Text("There is no instant or full-window unlock. A deliberate emergency may grant one 5-minute grace period for this sleep window from the Emergency section below.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }.padding(4)
                 }
@@ -1056,31 +1047,11 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        if let until = state.status.instagramDeveloperAllowedUntil,
-                           until > Date() {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Label("Instagram developer test active", systemImage: "hammer")
-                                    .font(.caption.weight(.semibold))
-                                RemainingTimeView(until: until)
-                                Text("Instagram only is temporarily excluded from distraction blocking until tonight's automatic cutoff.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if state.status.instagramDeveloperExceptionAvailable {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Instagram visual developer test")
-                                        .font(.caption.weight(.semibold))
-                                    Text("Tonight only · Instagram only · automatically re-blocks at midnight")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Button("Allow for tonight") {
-                                    state.allowInstagramDeveloperOneOff()
-                                }
-                            }
-                        }
+                        Label("Instagram is permanently blocked", systemImage: "lock.shield.fill")
+                            .font(.caption.weight(.semibold))
+                        Text("Temporary Instagram exceptions are disabled. This cannot be negotiated through the emergency path.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
 
                         HStack {
                             Picker(
@@ -1267,52 +1238,45 @@ struct ContentView: View {
                     }.padding(4)
                 }
 
-                GroupBox("Emergency sleep access") {
+                GroupBox("Emergency 5-minute grace") {
                     VStack(alignment: .leading, spacing: 10) {
                         if let until = state.status.emergencyOverrideUntil,
                            until > Date() {
-                            Label("Emergency sleep access is active", systemImage: "exclamationmark.triangle.fill")
+                            Label("5-minute emergency grace is active", systemImage: "exclamationmark.triangle.fill")
                                 .font(.headline)
                             RemainingTimeView(until: until)
-                            Text("Your saved sleep schedule and other blockers are unchanged. Sleep enforcement resumes automatically when this expires.")
+                            Text("Sleep enforcement resumes automatically when this expires. It cannot be extended during the same sleep window.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("For a genuine emergency, this immediately suspends only the sleep lock while the current sleep window is enforcing. There is no per-window usage counter.")
+                            Text("There is no instant emergency unlock and no full-window override. The only exception is one 5-minute grace period per active sleep window.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-
-                            Button("Emergency access now…") {
-                                state.confirmEmergencyNow()
-                            }
-                            .disabled(!state.status.emergencyImmediateAvailable)
-
-                            if !state.status.emergencyImmediateAvailable {
-                                Text(state.status.active
-                                    ? "Instant emergency access is unavailable right now. Use the deliberate emergency override below when a genuine emergency requires access."
-                                    : "Instant emergency access becomes available when the sleep lock is actively enforcing.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
                         }
 
                         Divider()
 
-                        Text("Deliberate emergency override")
+                        Text("Strict emergency check")
                             .font(.headline)
-                        Text("This emergency path has no per-window usage count. Each activation still requires a concrete strong reason of at least 80 characters and 12 words, followed by the confirmation phrase; there is no long timed delay.")
+                        Text("Explain the immediate concrete consequence of waiting in at least 160 characters and 25 words. After validation, type FIVE MINUTES ONLY exactly. If accepted, Deadlock grants at most five minutes once for the current sleep window.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
                         TextEditor(text: $state.emergencyReason)
-                            .frame(height: 86)
+                            .frame(height: 100)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
                                     .stroke(Color.secondary.opacity(0.35))
                             )
-                        Text("\(state.emergencyReason.trimmingCharacters(in: .whitespacesAndNewlines).count) / 80 minimum characters")
+
+                        Text("\(state.emergencyReason.trimmingCharacters(in: .whitespacesAndNewlines).count) / 160 minimum characters")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Button("Validate emergency reason") { state.beginEmergency() }
+
+                        Button("Validate emergency reason") {
+                            state.beginEmergency()
+                        }
+
                         if !state.emergencyChallenge.isEmpty {
                             Text("Type this exactly to confirm:")
                                 .font(.caption)
@@ -1322,10 +1286,13 @@ struct ContentView: View {
                                 .textSelection(.enabled)
                             TextField("Confirmation phrase", text: $state.emergencyTyped)
                                 .textFieldStyle(.roundedBorder)
-                            Button("Confirm emergency unlock") { state.submitEmergency() }
-                                .buttonStyle(.borderedProminent)
+                            Button("Use my one 5-minute grace") {
+                                state.submitEmergency()
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                    }.padding(.top, 8)
+                    }
+                    .padding(.top, 8)
                 }
 
                 if let activation = state.status.pendingConfigActivation {
@@ -1400,11 +1367,7 @@ struct BedtimeLockApp: App {
                 }
 
             if state.status.active {
-                Label("Sleep lock active", systemImage: "moon.zzz.fill")
-                Button("Emergency access now…") {
-                    state.confirmEmergencyNow()
-                }
-                .disabled(!state.status.emergencyImmediateAvailable)
+                Label("Sleep lock active · emergency grace is 5 min max", systemImage: "moon.zzz.fill")
             }
             if state.status.pornBlockerActive {
                 Label("Porn Blocker active", systemImage: "shield.fill")
@@ -1462,12 +1425,6 @@ func runCLI() -> Never {
                 command: .startDistractionBlock,
                 seconds: seconds
             )
-
-        case "emergency-now":
-            request = IPCRequest(command: .emergencyImmediate)
-
-        case "instagram-dev-now":
-            request = IPCRequest(command: .allowInstagramDeveloperOneOff)
 
         case "uninstall-request":
             request = IPCRequest(command: .uninstallRequest)
