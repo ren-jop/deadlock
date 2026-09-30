@@ -40,6 +40,7 @@ final class DeadlockDaemon {
         ensurePornSettings()
         ensureDistractionSettings()
         ensureBedGuardSettings()
+        enforceStrictExceptionPolicy()
 
         powerMonitor = PowerMonitor { [weak self] in
             // Give the menu app a brief chance to present the explicit emergency
@@ -81,6 +82,34 @@ final class DeadlockDaemon {
         RunLoop.main.run()
     }
 
+    private func enforceStrictExceptionPolicy() {
+        let now = Date()
+        let existingUntil = store.state.emergencyOverrideUntil
+        let triggeredAt = store.state.emergencyAccessTriggeredAt
+        let validFiveMinuteOverride: Date? = {
+            guard let existingUntil,
+                  existingUntil > now,
+                  let triggeredAt,
+                  existingUntil <= triggeredAt.addingTimeInterval(5 * 60 + 2)
+            else { return nil }
+            return existingUntil
+        }()
+
+        try? store.mutate { state in
+            state.instagramDeveloperAllowedUntil = nil
+            state.instagramDeveloperExceptionUsed = true
+            state.emergencyOverrideUntil = validFiveMinuteOverride
+            var settings = sanitizedDistractionSettings(
+                state.distractionSettings ?? .defaultSettings
+            )
+            if !settings.blockedDomains.contains(where: isInstagramDomain) {
+                settings.blockedDomains.append("instagram.com")
+            }
+            state.distractionSettings = settings
+        }
+        emergencyOverrideUntil = validFiveMinuteOverride
+    }
+
     private func ensurePornSettings() {
         guard store.state.pornSettings == nil else { return }
         let migratedEnabled = store.state.accountabilityEnabled ?? true
@@ -114,37 +143,26 @@ final class DeadlockDaemon {
     }
 
     private func instagramDeveloperExceptionActive(_ now: Date = Date()) -> Bool {
-        guard let until = store.state.instagramDeveloperAllowedUntil else {
-            return false
-        }
-        return until > now
-    }
-
-    private func instagramDeveloperActivationDeadline() -> Date? {
-        var components = DateComponents()
-        components.year = 2026
-        components.month = 10
-        components.day = 1
-        components.hour = 0
-        components.minute = 0
-        components.second = 0
-        return Calendar.current.date(from: components)
+        _ = now
+        return false
     }
 
     private func instagramDeveloperExceptionAvailable(_ now: Date = Date()) -> Bool {
-        guard let deadline = instagramDeveloperActivationDeadline() else {
-            return false
-        }
-        return now < deadline
+        _ = now
+        return false
     }
 
     private func sanitizedDistractionSettings(
         _ settings: DistractionSettings
     ) -> DistractionSettings {
         var sanitized = settings
-        sanitized.blockedDomains = PolicyEngine.normalizedDomains(
+        var domains = PolicyEngine.normalizedDomains(
             settings.blockedDomains
         ).filter { !isAlwaysAllowedDistractionDomain($0) }
+        if !domains.contains(where: isInstagramDomain) {
+            domains.append("instagram.com")
+        }
+        sanitized.blockedDomains = domains
         return sanitized
     }
 
@@ -222,13 +240,10 @@ final class DeadlockDaemon {
     private func effectiveDistractionDomains(
         _ now: Date = Date()
     ) -> [String] {
-        let instagramAllowed = instagramDeveloperExceptionActive(now)
+        _ = now
         return PolicyEngine.normalizedDomains(
             effectiveDistractionSettings().blockedDomains
-        ).filter {
-            !isAlwaysAllowedDistractionDomain($0)
-                && !(instagramAllowed && isInstagramDomain($0))
-        }
+        ).filter { !isAlwaysAllowedDistractionDomain($0) }
     }
 
     private func acceptLoop() {
@@ -471,55 +486,26 @@ final class DeadlockDaemon {
             )
 
         case .allowInstagramDeveloperOneOff:
-            let now = Date()
-            if let until = store.state.instagramDeveloperAllowedUntil,
-               until > now {
-                return IPCResponse(
-                    ok: true,
-                    message: "Instagram developer testing is already allowed until \(ISO8601DateFormatter().string(from: until)).",
-                    status: status(),
-                    distractionSettings: effectiveDistractionSettings()
-                )
-            }
-            guard instagramDeveloperExceptionAvailable(now) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "The single-use Instagram developer-test exception is no longer available.",
-                    status: status(),
-                    distractionSettings: effectiveDistractionSettings()
-                )
-            }
-
-            guard let until = instagramDeveloperActivationDeadline() else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not determine tonight's Instagram exception cutoff.",
-                    status: status(),
-                    distractionSettings: effectiveDistractionSettings()
-                )
-            }
             do {
                 try store.mutate { state in
-                    state.instagramDeveloperAllowedUntil = until
+                    state.instagramDeveloperAllowedUntil = nil
                     state.instagramDeveloperExceptionUsed = true
                 }
                 applyWebProtectionIfNeeded(force: true)
-                contentMonitor?.rescanFrontmost()
-                reschedule()
-                return IPCResponse(
-                    ok: true,
-                    message: "Tonight-only Instagram access is active until midnight. It expires automatically and does not change the saved blocker configuration.",
-                    status: status(),
-                    distractionSettings: effectiveDistractionSettings()
-                )
             } catch {
                 return IPCResponse(
                     ok: false,
-                    message: "Could not start Instagram developer exception: \(error)",
+                    message: "Instagram is permanently blocked and its exception state could not be cleared: \(error)",
                     status: status(),
                     distractionSettings: effectiveDistractionSettings()
                 )
             }
+            return IPCResponse(
+                ok: false,
+                message: "Instagram is permanently blocked. Temporary exceptions are disabled.",
+                status: status(),
+                distractionSettings: effectiveDistractionSettings()
+            )
 
         case .setDistractionSettings:
             guard var new = req.distractionSettings else {
@@ -552,6 +538,9 @@ final class DeadlockDaemon {
             new.blockedDomains = PolicyEngine.normalizedDomains(
                 new.blockedDomains
             ).filter { !isAlwaysAllowedDistractionDomain($0) }
+            if !new.blockedDomains.contains(where: isInstagramDomain) {
+                new.blockedDomains.append("instagram.com")
+            }
             new.setupCompleted = true
 
             do {
@@ -660,84 +649,73 @@ final class DeadlockDaemon {
             }
 
         case .emergencyImmediate:
-            let now = Date()
-            guard temporaryInstantEmergencyAllowed(now) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Instant emergency access was a one-night exception and is no longer available. Use the deliberate emergency path with a strong reason.",
-                    status: status()
-                )
-            }
-            guard let active = currentInterval(now: now) else {
-                return IPCResponse(
-                    ok: false,
-                    message: "Instant emergency access is only available while the sleep lock is actively enforcing.",
-                    status: status()
-                )
-            }
-
-            if let until = emergencyOverrideUntil, until > now {
-                return IPCResponse(
-                    ok: true,
-                    message: "Emergency sleep access is already active until \(ISO8601DateFormatter().string(from: until)).",
-                    status: status()
-                )
-            }
-
-            let until = active.end
-            do {
-                try store.mutate { state in
-                    state.emergencyOverrideUntil = until
-                    state.emergencyAccessTriggeredAt = now
-                }
-            } catch {
-                return IPCResponse(
-                    ok: false,
-                    message: "Could not record emergency access: \(error)",
-                    status: status()
-                )
-            }
-
-            emergencyChallenge = nil
-            emergencyReason = nil
-            emergencyReadyAt = nil
-            emergencyOverrideUntil = until
-            reschedule()
             return IPCResponse(
-                ok: true,
-                message: "Tonight-only emergency sleep exception active until \(ISO8601DateFormatter().string(from: until)). Your saved sleep schedule and other blockers were not changed.",
+                ok: false,
+                message: "Instant emergency unlock is disabled. The only emergency option is one 5-minute grace period per active sleep window.",
                 status: status()
             )
 
         case .emergencyBegin:
-            guard let reason = validatedEmergencyReason(req.text) else {
+            let now = Date()
+            guard let active = currentInterval(now: now) else {
                 return IPCResponse(
                     ok: false,
-                    message: "A strong emergency reason is required. Explain the concrete consequence if this waits until the sleep lock ends, using at least 80 characters and 12 words.",
+                    message: "The 5-minute emergency grace is only available while the sleep lock is actively enforcing.",
                     status: status()
                 )
             }
-            let challenge = "EMERGENCY UNLOCK"
+            if let triggered = store.state.emergencyAccessTriggeredAt,
+               triggered >= active.start,
+               triggered < active.end {
+                return IPCResponse(
+                    ok: false,
+                    message: "The single 5-minute emergency grace for this sleep window has already been used.",
+                    status: status()
+                )
+            }
+            guard let reason = validatedEmergencyReason(req.text) else {
+                return IPCResponse(
+                    ok: false,
+                    message: "A concrete emergency reason is required: at least 160 characters and 25 words explaining the immediate consequence of waiting.",
+                    status: status()
+                )
+            }
+            let challenge = "FIVE MINUTES ONLY"
             emergencyReason = reason
             emergencyChallenge = challenge
             emergencyReadyAt = nil
             return IPCResponse(
                 ok: true,
-                message: "Reason accepted. Type EMERGENCY UNLOCK to confirm this is genuinely urgent.",
+                message: "Reason accepted. Type FIVE MINUTES ONLY exactly. This grants one 5-minute grace period and nothing longer.",
                 status: status(),
                 challenge: challenge
             )
 
         case .emergencySubmit:
             guard let reason = emergencyReason else {
-                return IPCResponse(ok: false, message: "Start again and provide a strong emergency reason first.", status: status())
+                return IPCResponse(ok: false, message: "Start again and provide the emergency reason first.", status: status())
             }
-            guard let expected = emergencyChallenge, let text = req.text, constantTimeEqual(expected, text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-                return IPCResponse(ok: false, message: "Confirmation did not match. Type EMERGENCY UNLOCK exactly.", status: status())
+            guard let expected = emergencyChallenge,
+                  let text = req.text,
+                  constantTimeEqual(expected, text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return IPCResponse(ok: false, message: "Confirmation did not match. Type FIVE MINUTES ONLY exactly.", status: status())
             }
 
             let now = Date()
-            let until = Date().addingTimeInterval(2 * 3600)
+            guard let active = currentInterval(now: now) else {
+                emergencyChallenge = nil
+                emergencyReason = nil
+                return IPCResponse(ok: false, message: "The sleep lock is no longer actively enforcing.", status: status())
+            }
+            if let triggered = store.state.emergencyAccessTriggeredAt,
+               triggered >= active.start,
+               triggered < active.end {
+                emergencyChallenge = nil
+                emergencyReason = nil
+                return IPCResponse(ok: false, message: "The 5-minute emergency grace for this sleep window has already been used.", status: status())
+            }
+
+            let until = min(now.addingTimeInterval(5 * 60), active.end)
             do {
                 try store.mutate { state in
                     state.emergencyOverrideUntil = until
@@ -745,7 +723,7 @@ final class DeadlockDaemon {
                     state.emergencyAccessReason = reason
                 }
             } catch {
-                return IPCResponse(ok: false, message: "Could not record emergency access: \(error)", status: status())
+                return IPCResponse(ok: false, message: "Could not record emergency grace: \(error)", status: status())
             }
 
             emergencyOverrideUntil = until
@@ -755,14 +733,14 @@ final class DeadlockDaemon {
             reschedule()
             return IPCResponse(
                 ok: true,
-                message: "Emergency sleep override active for 2 hours. Your other blockers remain unchanged.",
+                message: "One-time 5-minute emergency grace active. Sleep enforcement resumes automatically when it expires.",
                 status: status()
             )
 
         case .emergencyActivate:
             return IPCResponse(
                 ok: false,
-                message: "There is no timed emergency wait anymore. Enter a strong reason and confirm with EMERGENCY UNLOCK.",
+                message: "Long emergency unlocks are disabled. Only the deliberate one-time 5-minute grace path is available.",
                 status: status()
             )
 
@@ -894,12 +872,7 @@ final class DeadlockDaemon {
         let settingsGuard = (store.state.settingsLockedUntil ?? .distantPast) > now
         let blocked = settingsGuard || active != nil || (next.map { $0.start.timeIntervalSince(now) <= 300 } ?? false)
         let pornSettings = effectivePornSettings()
-        let emergencyImmediateAvailable: Bool = {
-            guard temporaryInstantEmergencyAllowed(now) else { return false }
-            guard let active else { return false }
-            guard !overrideActive(now) else { return false }
-            return true
-        }()
+        let emergencyImmediateAvailable = false
 
         return DaemonStatus(
             active: active != nil && !overrideActive(now),
@@ -944,8 +917,8 @@ final class DeadlockDaemon {
             distractionScheduleNextStart: nextDistraction?.start,
             distractionSettingsEditable: distractionSettingsEditable(now),
             discordOneOffAllowedUntil: nil,
-            instagramDeveloperAllowedUntil: store.state.instagramDeveloperAllowedUntil,
-            instagramDeveloperExceptionAvailable: instagramDeveloperExceptionAvailable(now)
+            instagramDeveloperAllowedUntil: nil,
+            instagramDeveloperExceptionAvailable: false
         )
     }
 
@@ -1059,15 +1032,6 @@ final class DeadlockDaemon {
         if let until = store.state.discordOneOffAllowedUntil,
            until > now {
             dates.append(until)
-        }
-        if let until = store.state.instagramDeveloperAllowedUntil,
-           until > now {
-            dates.append(until)
-        }
-        if let deadline = instagramDeveloperActivationDeadline(),
-           deadline > now,
-           store.state.instagramDeveloperExceptionUsed != true {
-            dates.append(deadline)
         }
         if let settingsEnd = store.state.settingsLockedUntil, settingsEnd > now { dates.append(settingsEnd) }
         if let refresh = nextWebProtectionRefreshAt, refresh > now { dates.append(refresh) }
@@ -1348,25 +1312,13 @@ final class DeadlockDaemon {
         return names[min(7, max(1, weekday)) - 1]
     }
 
-    private func temporaryInstantEmergencyAllowed(_ now: Date) -> Bool {
-        var components = DateComponents()
-        components.year = 2026
-        components.month = 10
-        components.day = 1
-        components.hour = 12
-        components.minute = 0
-        components.second = 0
-        guard let cutoff = Calendar.current.date(from: components) else { return false }
-        return now < cutoff
-    }
-
     private func validatedEmergencyReason(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let reason = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let words = reason.split { ch in
             ch == " " || ch == "\n" || ch == "\t" || ch == "\r"
         }
-        guard reason.count >= 80, words.count >= 12 else { return nil }
+        guard reason.count >= 160, words.count >= 25 else { return nil }
         return reason
     }
 
