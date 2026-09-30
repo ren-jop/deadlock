@@ -43,11 +43,9 @@ final class WebProtection {
         // communication/productivity exceptions.
         "discord.com",
         "discord.gg",
-        "instagram.com",
-        // Instagram's web app serves images/video and some attachments from
-        // shared Meta CDNs. Keep those reachable when Instagram itself is an
-        // explicit exception, without allowing facebook.com.
-        "cdninstagram.com",
+        // Shared Meta backends used by allowed communication/productivity
+        // services are excluded from the imported social list. Instagram
+        // itself is independently hard-blocked by the permanent layer.
         "fbcdn.net",
         "fbcdn.com",
         "fbsbx.com",
@@ -100,7 +98,11 @@ final class WebProtection {
         "hentai2read.com",
         "simply-hentai.com",
         "fakku.net",
-        // Mixed-content sites explicitly requested as permanent hard blocks.
+        // Non-adult sites explicitly requested as permanent hard blocks.
+        "instagram.com",
+        "cdninstagram.com",
+        "i.instagram.com",
+        "graph.instagram.com",
         "deviantart.com",
         "deviantart.net",
         "sta.sh"
