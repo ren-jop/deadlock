@@ -29,7 +29,6 @@ final class AppState: ObservableObject {
     private var settingsWindow: NSWindow?
     private var accountabilityAttemptedEvent: Date?
     private var emergencyMessageAttemptedEvent: Date?
-    private var emergencyPromptVisible = false
 
     private lazy var airPodsBedGuard = AirPodsBedGuard(
         onSnapshot: { [weak self] snapshot in
@@ -192,24 +191,6 @@ final class AppState: ObservableObject {
             message = String(describing: error)
         }
     }
-
-    func allowInstagramDeveloperOneOff() {
-        do {
-            let response = try UnixSocketClient.request(
-                IPCRequest(command: .allowInstagramDeveloperOneOff)
-            )
-            message = response.message
-            if let settings = response.distractionSettings {
-                distractionSettings = settings
-            }
-            if let status = response.status {
-                self.status = status
-            }
-        } catch {
-            message = String(describing: error)
-        }
-    }
-
 
     private func applyBedGuardSettings(_ settings: BedGuardSettings) {
         bedGuardSettings = settings
@@ -462,42 +443,9 @@ final class AppState: ObservableObject {
         updateAccountabilityWindow()
     }
 
-    func activateEmergencyNow() {
-        do {
-            let response = try UnixSocketClient.request(IPCRequest(command: .emergencyImmediate))
-            message = response.message
-            if let status = response.status { self.status = status }
-            updateCountdownWindow()
-            sendEmergencyAccessMessageIfNeeded()
-        } catch { message = String(describing: error) }
-    }
-
     private func handleSystemWake() {
-        // The daemon intentionally waits a few seconds before re-enforcing sleep
-        // after a wake so this prompt can be used without opening Terminal.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self else { return }
-            self.refreshStatus()
-            guard self.status.active,
-                  self.status.emergencyImmediateAvailable else { return }
-            self.confirmEmergencyNow()
-        }
-    }
-
-    func confirmEmergencyNow() {
-        guard !emergencyPromptVisible else { return }
-        emergencyPromptVisible = true
-        defer { emergencyPromptVisible = false }
-
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = "Use tonight-only sleep exception?"
-        alert.informativeText = "This one-off exception exists only for tonight and disappears automatically tomorrow. It suspends only sleep enforcement until the current sleep window ends; your saved schedule and other blockers stay unchanged."
-        alert.addButton(withTitle: "Use tonight-only exception")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            activateEmergencyNow()
+            self?.refreshStatus()
         }
     }
 
@@ -1398,7 +1346,7 @@ struct BedtimeLockApp: App {
 func runCLI() -> Never {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: "--ipc"), args.count > index + 1 else {
-        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|emergency-now|uninstall-request|uninstall-status> [args]\n", stderr)
+        fputs("usage: deadlock --ipc <status|focus-start|distraction-start|uninstall-request|uninstall-status> [args]\n", stderr)
         exit(2)
     }
 
