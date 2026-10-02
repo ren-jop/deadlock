@@ -995,9 +995,9 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Label("Instagram is permanently blocked", systemImage: "lock.shield.fill")
+                        Label("Instagram is always allowed for work", systemImage: "checkmark.shield")
                             .font(.caption.weight(.semibold))
-                        Text("Temporary Instagram exceptions are disabled. This cannot be negotiated through the emergency path.")
+                        Text("Deadlock removes Instagram from saved distraction rules and excludes it from the imported social blocklist.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 
@@ -1060,7 +1060,7 @@ struct ContentView: View {
                             "Deadlock automatically refreshes StevenBlack's social-only list. "
                             + "Imported entries cannot override protected communication exceptions "
                             + "such as Discord, Instagram, Slack, Teams, Zoom or Google Meet. "
-                            + "Your explicit local rules still decide Instagram and YouTube."
+                            + "Your explicit local rules still decide YouTube."
                         )
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -1071,7 +1071,7 @@ struct ContentView: View {
                             .font(.subheadline.weight(.medium))
 
                         TextField(
-                            "instagram.com, tiktok.com, reddit.com…",
+                            "tiktok.com, reddit.com, x.com…",
                             text: Binding(
                                 get: {
                                     state.distractionSettings.blockedDomains
