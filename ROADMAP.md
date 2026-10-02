@@ -24,7 +24,7 @@ Do not redesign the working sleep path.
 Implemented around the useful core: strict website blocking, not feature bloat.
 
 - separate root-owned distraction policy.
-- default list: Instagram, TikTok, X/Twitter, Reddit, Facebook and Twitch.
+- default list: TikTok, X/Twitter, Reddit, Facebook and Twitch; Instagram and Discord are reserved as allowed work/productivity services.
 - YouTube intentionally remains unblocked by default.
 - user-editable domain list.
 - manual timed blocks from 5 minutes through custom dates.
