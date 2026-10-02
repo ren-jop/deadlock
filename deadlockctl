@@ -98,7 +98,7 @@ web() {
 }
 
 instagram_debug() {
-  echo "== Instagram / Meta host entries still managed =="
+  echo "== Instagram / Meta host entries (Instagram entries should be absent) =="
   grep -Ei 'instagram|cdninstagram|fbcdn|fbsbx|facebook[.]net|graph[.]facebook|connect[.]facebook' /etc/hosts 2>/dev/null || echo "No matching /etc/hosts entries."
   echo
   echo "== DNS checks =="
