@@ -36,10 +36,6 @@ enum DistractionPresetCatalog {
             "Social & feeds",
             presets: [
                 DistractionPreset(
-                    "Instagram",
-                    domains: ["instagram.com"]
-                ),
-                DistractionPreset(
                     "TikTok",
                     domains: ["tiktok.com"]
                 ),
