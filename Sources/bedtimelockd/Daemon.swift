@@ -97,15 +97,11 @@ final class DeadlockDaemon {
 
         try? store.mutate { state in
             state.instagramDeveloperAllowedUntil = nil
-            state.instagramDeveloperExceptionUsed = true
+            state.instagramDeveloperExceptionUsed = nil
             state.emergencyOverrideUntil = validFiveMinuteOverride
-            var settings = sanitizedDistractionSettings(
+            state.distractionSettings = sanitizedDistractionSettings(
                 state.distractionSettings ?? .defaultSettings
             )
-            if !settings.blockedDomains.contains(where: isInstagramDomain) {
-                settings.blockedDomains.append("instagram.com")
-            }
-            state.distractionSettings = settings
         }
         emergencyOverrideUntil = validFiveMinuteOverride
     }
@@ -131,14 +127,7 @@ final class DeadlockDaemon {
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return normalized == "discord.com"
             || normalized.hasSuffix(".discord.com")
-    }
-
-    private func isInstagramDomain(_ domain: String) -> Bool {
-        let normalized = domain
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        return normalized == "instagram.com"
+            || normalized == "instagram.com"
             || normalized.hasSuffix(".instagram.com")
     }
 
@@ -156,14 +145,12 @@ final class DeadlockDaemon {
         _ settings: DistractionSettings
     ) -> DistractionSettings {
         var sanitized = settings
-        var domains = PolicyEngine.normalizedDomains(
+        let domains = PolicyEngine.normalizedDomains(
             settings.blockedDomains,
             limit: 127
         ).filter {
             !isAlwaysAllowedDistractionDomain($0)
-                && !isInstagramDomain($0)
         }
-        domains.insert("instagram.com", at: 0)
         sanitized.blockedDomains = domains
         return sanitized
     }
@@ -172,13 +159,15 @@ final class DeadlockDaemon {
         let existing = store.state.distractionSettings ?? .defaultSettings
         let sanitized = sanitizedDistractionSettings(existing)
 
-        // Discord is intentionally treated as a productivity service. Migrate
-        // older installs by removing any saved Discord block and any obsolete
+        // Discord and Instagram are intentionally treated as productivity/work
+        // services. Migrate older installs by removing saved blocks and obsolete
         // temporary-exception state.
         guard store.state.distractionSettings != sanitized
                 || store.state.discordOneOffAllowedUntil != nil
                 || store.state.discordSetupExceptionUsed != nil
                 || store.state.discordOneOffUsed != nil
+                || store.state.instagramDeveloperAllowedUntil != nil
+                || store.state.instagramDeveloperExceptionUsed != nil
         else { return }
 
         try? store.mutate { state in
@@ -186,6 +175,8 @@ final class DeadlockDaemon {
             state.discordOneOffAllowedUntil = nil
             state.discordSetupExceptionUsed = nil
             state.discordOneOffUsed = nil
+            state.instagramDeveloperAllowedUntil = nil
+            state.instagramDeveloperExceptionUsed = nil
         }
     }
 
@@ -488,23 +479,13 @@ final class DeadlockDaemon {
             )
 
         case .allowInstagramDeveloperOneOff:
-            do {
-                try store.mutate { state in
-                    state.instagramDeveloperAllowedUntil = nil
-                    state.instagramDeveloperExceptionUsed = true
-                }
-                applyWebProtectionIfNeeded(force: true)
-            } catch {
-                return IPCResponse(
-                    ok: false,
-                    message: "Instagram is permanently blocked and its exception state could not be cleared: \(error)",
-                    status: status(),
-                    distractionSettings: effectiveDistractionSettings()
-                )
-            }
+            // Kept for compatibility with older clients. Instagram is now an
+            // always-allowed work service, so no temporary exception is needed.
+            ensureDistractionSettings()
+            applyWebProtectionIfNeeded(force: true)
             return IPCResponse(
-                ok: false,
-                message: "Instagram is permanently blocked. Temporary exceptions are disabled.",
+                ok: true,
+                message: "Instagram is always allowed for work. No temporary exception is needed.",
                 status: status(),
                 distractionSettings: effectiveDistractionSettings()
             )
