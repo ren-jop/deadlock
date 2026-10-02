@@ -484,6 +484,13 @@ final class WebProtection {
 
     private func isSocialImportAllowed(_ domain: String) -> Bool {
         let host = domain.lowercased()
+        // Instagram is an explicit work exception. The upstream social list
+        // includes many alternate Instagram/CDN hostnames, so treat any
+        // Instagram-branded hostname as allowed instead of maintaining an
+        // incomplete hand-written set.
+        if host.contains("instagram") {
+            return true
+        }
         return socialImportAllowRoots.contains {
             host == $0 || host.hasSuffix("." + $0)
         }
