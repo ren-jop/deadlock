@@ -164,7 +164,6 @@ public struct DistractionSettings: Codable, Hashable, Sendable {
     }
 
     public static let defaultBlockedDomains = [
-        "instagram.com",
         "tiktok.com",
         "x.com",
         "twitter.com",
